@@ -1,0 +1,148 @@
+# Textos de los módulos comunes (español	inglés	francés). sincronizar.sh añade a cada
+# src/i18n.tsv las filas que le falten.
+Ajustes	Settings	Réglages
+Versión {v}	Version {v}	Version {v}
+⟳ Buscar actualizaciones…	⟳ Check for updates…	⟳ Rechercher des mises à jour…
+↺ Restablecer	↺ Reset	↺ Réinitialiser
+Vuelve a los ajustes predeterminados	Go back to the default settings	Revenir aux réglages par défaut
+Los cambios se aplican y se guardan solos.	Changes are applied and saved automatically.	Les modifications sont appliquées et enregistrées automatiquement.
+Idioma	Language	Langue
+Tema	Theme	Thème
+Sistema	System	Système
+Claro	Light	Clair
+Oscuro	Dark	Sombre
+Autor	Author	Auteur
+Sitio web	Website	Site web
+Licencia	License	Licence
+MIT · © 2026 {user}	MIT · © 2026 {user}	MIT · © 2026 {user}
+ver	view	voir
+Hecho con	Made with	Fait avec
+Versiones	Releases	Versions
+Reportar un problema	Report a problem	Signaler un problème
+Código fuente	Source code	Code source
+Buscar actualizaciones…	Check for updates…	Rechercher des mises à jour…
+Cerrar	Close	Fermer
+Abrir carpeta	Open folder	Ouvrir le dossier
+Configuración	Configuration	Configuration
+Visor y editor de archivos de varios GB	Viewer and editor for multi-GB files	Visionneuse et éditeur de fichiers de plusieurs Go
+Probador de conexiones JDBC con consola SQL	JDBC connection tester with SQL console	Testeur de connexions JDBC avec console SQL
+Cliente HTTP y SOAP para probar APIs	HTTP and SOAP client for testing APIs	Client HTTP et SOAP pour tester des API
+General	General	Général
+Actualizar {app}	Update {app}	Mettre à jour {app}
+Versión instalada: {v}	Installed version: {v}	Version installée : {v}
+Buscando la última versión en GitHub…	Looking for the latest version on GitHub…	Recherche de la dernière version sur GitHub…
+✔ Ya tienes la última versión ({v}).	✔ You already have the latest version ({v}).	✔ Vous avez déjà la dernière version ({v}).
+Reinstalar de todos modos	Reinstall anyway	Réinstaller quand même
+Hay una versión nueva: {v}	A new version is available: {v}	Une nouvelle version est disponible : {v}
+Se descarga el instalador; al reiniciar, {app} se cierra, se instala la versión nueva y vuelve a abrirse.	The installer is downloaded; on restart, {app} closes, the new version is installed and it opens again.	L'installateur est téléchargé ; au redémarrage, {app} se ferme, la nouvelle version s'installe et se rouvre.
+Se descarga el código, se compila (la primera vez tarda unos minutos) y se reemplaza la app instalada. Puedes seguir usando {app} mientras tanto.	The source is downloaded, built (the first time takes a few minutes) and the installed app is replaced. You can keep using {app} meanwhile.	Le code est téléchargé, compilé (la première fois prend quelques minutes) et l'app installée est remplacée. Vous pouvez continuer à utiliser {app} pendant ce temps.
+Se descarga la versión publicada y se reemplaza la app instalada. Puedes seguir usando {app} mientras tanto.	The published version is downloaded and replaces the installed app. You can keep using {app} meanwhile.	La version publiée est téléchargée et remplace l'app installée. Vous pouvez continuer à utiliser {app} pendant ce temps.
+Actualizar ahora	Update now	Mettre à jour maintenant
+Actualizando… (puedes seguir trabajando)	Updating… (you can keep working)	Mise à jour… (vous pouvez continuer à travailler)
+✔ Versión nueva instalada.	✔ New version installed.	✔ Nouvelle version installée.
+Reiniciar ahora	Restart now	Redémarrer maintenant
+o úsala la próxima vez que abras {app}	or use it next time you open {app}	ou utilisez-la la prochaine fois que vous ouvrirez {app}
+No se pudo actualizar: {e}	Could not update: {e}	Impossible de mettre à jour : {e}
+Reintentar	Retry	Réessayer
+Registro:	Log:	Journal :
+Hay una versión nueva ({v}): clic para actualizar	A new version is available ({v}): click to update	Une nouvelle version est disponible ({v}) : cliquez pour mettre à jour
+Buscar actualizaciones · versión {v}	Check for updates · version {v}	Rechercher des mises à jour · version {v}
+Atajos de teclado	Keyboard shortcuts	Raccourcis clavier
+Cerrar la ventana de delante	Close the front window	Fermer la fenêtre au premier plan
+Acerca de {app}	About {app}	À propos de {app}
+Atajos de teclado (F1)	Keyboard shortcuts (F1)	Raccourcis clavier (F1)
+no se pudo	could not	impossible
+Clic para cerrar	Click to close	Cliquer pour fermer
+Grafito claro	Light graphite	Graphite clair
+Grafito oscuro	Dark graphite	Graphite sombre
+Grafito: paneles en otro gris y separaciones marcadas	Graphite: panels in a different grey and clear separations	Graphite : panneaux d’un autre gris et séparations marquées
+Proyecto	Project	Projet
+Este equipo	This computer	Cet ordinateur
+Dibujo	Rendering	Rendu
+Copiar información	Copy information	Copier les informations
+Versión, sistema y carpetas, para pegarlos al reportar un problema	Version, system and folders, to paste when reporting a problem	Version, système et dossiers, à coller pour signaler un problème
+OpenGL (wgpu no disponible)	OpenGL (wgpu not available)	OpenGL (wgpu indisponible)
+Recuperación	Recovery	Récupération
+Java encontrados	Java found	Java trouvés
+Actualizaciones	Updates	Mises à jour
+Avisar de versiones nuevas (punto verde en ⬇; mira GitHub al abrir y cada 6 horas)	Notify about new versions (green dot on ⬇; checks GitHub at startup and every 6 hours)	Signaler les nouvelles versions (point vert sur ⬇ ; consulte GitHub au démarrage et toutes les 6 heures)
+No se pudo guardar: {e}	Could not save: {e}	Impossible d'enregistrer : {e}
+Tipo	Type	Type
+Todos	All	Tous
+Ver	View	Présentation
+falló (mira el registro)	failed (see the log)	échec (voir le journal)
+no hay instalador publicado	no published installer	aucun installateur publié
+no se pudo consultar GitHub: {e}	could not query GitHub: {e}	impossible d’interroger GitHub : {e}
+no se pudo descargar: {e}	could not download: {e}	téléchargement impossible : {e}
+no se pudo ejecutar curl: {e}	could not run curl: {e}	impossible d'exécuter curl : {e}
+no se pudo iniciar: {e}	could not start: {e}	impossible de démarrer : {e}
+respuesta inesperada de GitHub	unexpected response from GitHub	réponse inattendue de GitHub
+terminó sin instalar la app	finished without installing the app	terminé sans installer l'app
+{v} (compilación local)	{v} (local build)	{v} (compilation locale)
+Abre una imagen (o arrástrala aquí). Sin imagen se dibuja un gris parejo.	Open an image (or drag it here). Without one, an even grey is drawn.	Ouvrez une image (ou glissez-la ici). Sans image, un gris uniforme est dessiné.
+Abrir imagen	Open image	Ouvrir une image
+Abrir imagen…	Open image…	Ouvrir une image…
+Abrir una imagen	Open an image	Ouvrir une image
+Abrirla	Open it	L’ouvrir
+Arrastrar una imagen	Drag an image	Glisser une image
+Brillo	Brightness	Luminosité
+Canal mínimo	Minimum channel	Canal minimal
+Carta completa	Full letter page	Page lettre entière
+Carta horizontal	Letter, landscape	Lettre, paysage
+Carta vertical	Letter, portrait	Lettre, portrait
+Como se imprime	As printed	Tel qu’imprimé
+Contorno y muro en gris (guía para rellenar)	Outline and grey walls (guide for filling in)	Contour et murs gris (guide pour remplir)
+Contraste	Contrast	Contraste
+Cuadro de	Square of	Carré de
+De un canal al siguiente: más pequeña = más detalle y más trabajo de relleno	From one channel to the next: smaller = more detail and more filling work	D’un canal au suivant : plus petit = plus de détail et plus de remplissage
+Dejando crecer las rayas…	Letting the stripes grow…	Croissance des rayures…
+Espera a que termine de dibujarse el patrón.	Wait until the pattern has finished drawing.	Attendez que le motif ait fini de se dessiner.
+Gris del muro	Wall grey	Gris des murs
+Guardar PDF	Save PDF	Enregistrer le PDF
+Guardar PDF…	Save PDF…	Enregistrer le PDF…
+Guardar SVG	Save SVG	Enregistrer le SVG
+Guardar SVG…	Save SVG…	Enregistrer le SVG…
+Guardar como SVG	Save as SVG	Enregistrer en SVG
+Guardar el PDF para imprimir	Save the PDF to print	Enregistrer le PDF à imprimer
+Hilos de cálculo	Computing threads	Fils de calcul
+Hoja	Page	Page
+Imagen	Image	Image
+Imagen original	Original image	Image d’origine
+Impresión	Printing	Impression
+Imágenes	Images	Images
+Invertir claros y oscuros	Swap lights and darks	Inverser clairs et sombres
+Laberinto con salida	Maze with an exit	Labyrinthe avec sortie
+Laberintos para rellenar a mano que forman una imagen	Hand-fill mazes that form an image	Labyrinthes à remplir à la main qui forment une image
+Lo más estrecho que queda un canal en las zonas oscuras	The narrowest a channel gets in dark areas	Le plus étroit qu’un canal peut être dans les zones sombres
+Lo más fino que queda un muro en las zonas claras	The thinnest a wall gets in light areas	Le plus fin qu’un mur peut être dans les zones claires
+Línea	Line	Trait
+Margen	Margin	Marge
+Mismo estilo, otro trazado al azar	Same style, another random layout	Même style, autre tracé au hasard
+Mostrarla en la vista (no se imprime)	Show it in the preview (not printed)	L’afficher dans l’aperçu (non imprimée)
+Muro mínimo	Minimum wall	Mur minimal
+Muros rellenos (terminado)	Filled walls (finished)	Murs remplis (terminé)
+Más claro = se nota menos lo que falta por rellenar	Lighter = what is left to fill shows less	Plus clair = ce qui reste à remplir se voit moins
+Más claro ←  → más oscuro	Lighter ←  → darker	Plus clair ←  → plus sombre
+Negativo	Negative	Négatif
+No se pudo abrir la imagen: {e}	Could not open the image: {e}	Impossible d’ouvrir l’image : {e}
+No se pudo reiniciar: {e}	Could not restart: {e}	Impossible de redémarrer : {e}
+Otro dibujo	Another drawing	Autre dessin
+Otro trazado al azar	Another random layout	Autre tracé au hasard
+Patrón	Pattern	Motif
+Rayas (reacción-difusión)	Stripes (reaction–diffusion)	Rayures (réaction-diffusion)
+Se imprime	Prints as	S’imprime
+Separación	Spacing	Espacement
+Separación {s} mm	Spacing {s} mm	Espacement {s} mm
+Solo el contorno	Outline only	Contour seul
+Solución	Solution	Solution
+Tamaño	Size	Taille
+Terminado	Finished	Terminé
+Trazado	Layout	Tracé
+Trazando el laberinto…	Drawing the maze…	Tracé du labyrinthe…
+Valores iniciales	Default values	Valeurs initiales
+Vuelve a los valores de fábrica del dibujo (no cambia la imagen)	Restores the drawing’s default values (the image stays)	Rétablit les valeurs d’origine du dessin (l’image reste)
+{n} celdas	{n} cells	{n} cellules
+{w} × {h} mm	{w} × {h} mm	{w} × {h} mm
+✔ Guardado: {p}	✔ Saved: {p}	✔ Enregistré : {p}
+Niveles	Levels	Niveaux
+Automáticos (del blanco al negro)	Automatic (from white to black)	Automatiques (du blanc au noir)
