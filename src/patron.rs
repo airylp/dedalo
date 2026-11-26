@@ -43,6 +43,8 @@ pub struct Campo {
     /// Lo que queda fuera del área se corta (reacción-difusión: es el margen de
     /// la simulación). El laberinto conserva entero su muro exterior.
     pub recortar: bool,
+    /// El campo ya trae el tono aplicado (negativo = tinta): el umbral es 0.
+    pub fijo: bool,
 }
 
 impl Campo {
@@ -176,7 +178,7 @@ pub fn reaccion_difusion(ancho: f32, alto: f32, periodo: f32, semilla: u64, paso
     ctl.avanza(1, 1);
     // V alto = raya: se invierte para que «bajo = muro».
     let campo: Vec<f32> = v.iter().map(|x| -x).collect();
-    Some(Campo { w, h, v: campo, paso, x0, y0, ancho, alto, solucion: vec![], recortar: true })
+    Some(Campo { w, h, v: campo, paso, x0, y0, ancho, alto, solucion: vec![], recortar: true, fijo: false })
 }
 
 // ---------------------------------------------------------------- laberinto
@@ -268,7 +270,7 @@ pub fn laberinto(ancho: f32, alto: f32, periodo: f32, semilla: u64, ctl: &Contro
             *out = d.min(1.0);
         }
     });
-    Some(Campo { w, h, v, paso: paso_c * celda, x0: x0c * celda, y0: y0c * celda, ancho, alto: filas as f32 * celda, solucion, recortar: false })
+    Some(Campo { w, h, v, paso: paso_c * celda, x0: x0c * celda, y0: y0c * celda, ancho, alto: filas as f32 * celda, solucion, recortar: false, fijo: false })
 }
 
 fn dist_seg(px: f32, py: f32, ax: f32, ay: f32, bx: f32, by: f32) -> f32 {
@@ -335,6 +337,9 @@ impl Umbrales {
     pub fn new(c: &Campo) -> Umbrales {
         // Puntos al azar dentro del área de dibujo (interpolados: en la rejilla
         // el laberinto da valores repetidos y los cuantiles saldrían a saltos).
+        if c.fijo {
+            return Umbrales { orden: vec![0.0] };
+        }
         let mut az = Azar::new(0x5eed);
         let mut orden: Vec<f32> = (0..200_000).map(|_| c.muestra(az.real() * c.ancho, az.real() * c.alto)).collect();
         orden.sort_by(f32::total_cmp);

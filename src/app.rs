@@ -62,7 +62,7 @@ struct TrabajoPatron {
     inicio: Instant,
 }
 
-/// Lo que decide la vista previa.
+/// Lo que decide el contenido de la vista previa.
 #[derive(Clone, Copy, PartialEq, Debug)]
 struct ClaveVista {
     patron: u64,
@@ -72,12 +72,26 @@ struct ClaveVista {
     muro_min: f32,
     canal_min: f32,
     impresion: Option<(Impresion, f32, f32)>,
+}
+
+/// Un trozo dibujado de la vista previa: qué rectángulo (mm del dibujo) y a
+/// qué resolución (píxeles por mm).
+#[derive(Clone, Copy, PartialEq, Debug)]
+struct Trozo {
+    clave: ClaveVista,
+    region: Rect,
     px: usize,
     py: usize,
 }
 
+impl Trozo {
+    fn resolucion(&self) -> f32 {
+        self.px as f32 / self.region.width().max(1e-3)
+    }
+}
+
 struct TrabajoVista {
-    clave: ClaveVista,
+    trozo: Trozo,
     rx: Receiver<(Vec<u8>, Option<Arc<Tono>>)>,
 }
 
@@ -118,7 +132,10 @@ pub struct App {
     ultima: Option<ClaveCampo>,
     ids: u64,
     tono: Option<(ClaveTono, Arc<Tono>)>,
-    vista: Option<(ClaveVista, TextureHandle)>,
+    vista: Option<(Trozo, TextureHandle)>,
+    /// Zoom de la hoja (1 = cabe entera) y punto de la hoja (mm) en el centro de la vista.
+    zoom: f32,
+    centro: Option<egui::Pos2>,
     trabajo_vista: Option<TrabajoVista>,
     ver: Ver,
     solucion: bool,
@@ -135,6 +152,9 @@ pub struct App {
     screenshot: Option<String>,
     frames: u32,
 }
+
+/// Zoom máximo (veces la hoja entera).
+const MAX_ZOOM: f32 = 40.0;
 
 fn bits(x: f32) -> u32 {
     x.to_bits()
@@ -175,6 +195,8 @@ impl App {
             ids: 0,
             tono: None,
             vista: None,
+            zoom: std::env::var("DEDALO_ZOOM").ok().and_then(|z| z.parse().ok()).unwrap_or(1.0),
+            centro: None,
             trabajo_vista: None,
             ver: match std::env::var("DEDALO_VER").as_deref() {
                 Ok("impresion") => Ver::Impresion,
@@ -325,16 +347,22 @@ impl App {
         self.trabajo = Some(TrabajoPatron { clave: quiero, ctl, rx, inicio: Instant::now() });
     }
 
-    /// Lanza o recoge la vista previa (`px` × `py` píxeles).
-    fn vista_al_dia(&mut self, ctx: &Context, px: usize, py: usize) {
+    /// Lanza o recoge la vista previa: `visible` = lo que se ve del dibujo
+    /// (mm), `res` = píxeles por mm de pantalla. Solo se vuelve a dibujar si lo
+    /// visible se sale de lo ya dibujado o si la resolución quedó corta o sobrada.
+    fn vista_al_dia(&mut self, ctx: &Context, visible: Rect, ext: Rect, res: f32) {
         if let Some(t) = &self.trabajo_vista {
             if let Ok((rgba, tono)) = t.rx.try_recv() {
                 let t = self.trabajo_vista.take().unwrap();
                 if let (Some(tn), Some(img)) = (tono, &self.imagen) {
-                    self.tono = Some((clave_tono(img, &t.clave), tn));
+                    self.tono = Some((clave_tono(img, &t.trozo.clave), tn));
                 }
-                let tex = ctx.load_texture("vista", ColorImage::from_rgba_unmultiplied([t.clave.px, t.clave.py], &rgba), TextureOptions::LINEAR);
-                self.vista = Some((t.clave, tex));
+                // DEDALO_VOLCADO=archivo.png (pruebas): guarda el último trozo dibujado.
+                if let Ok(f) = std::env::var("DEDALO_VOLCADO") {
+                    let _ = image::RgbaImage::from_raw(t.trozo.px as u32, t.trozo.py as u32, rgba.clone()).map(|i| i.save(f));
+                }
+                let tex = ctx.load_texture("vista", ColorImage::from_rgba_unmultiplied([t.trozo.px, t.trozo.py], &rgba), TextureOptions::LINEAR);
+                self.vista = Some((t.trozo, tex));
             } else {
                 return;
             }
@@ -348,12 +376,28 @@ impl App {
             muro_min: self.p.muro_min,
             canal_min: self.p.canal_min,
             impresion: (self.ver == Ver::Impresion).then_some((self.p.impresion, self.p.linea, self.p.gris)),
-            px,
-            py,
         };
-        if self.vista.as_ref().is_some_and(|(k, _)| *k == clave) {
+        if visible.width() <= 0.0 || visible.height() <= 0.0 {
             return;
         }
+        if let Some((t, _)) = &self.vista {
+            let r = t.resolucion();
+            let llega = t.region.expand(0.01).contains_rect(visible) || t.region.expand(0.01).contains_rect(ext.intersect(visible));
+            if t.clave == clave && llega && r >= res * 0.75 && r <= res * 1.6 {
+                return;
+            }
+        }
+        // Lo visible más un margen (para poder mover un poco sin redibujar).
+        let margen = vec2(visible.width(), visible.height()) * 0.3;
+        let region = visible.expand2(margen).intersect(ext);
+        let mut res = res;
+        let max = 4096.0;
+        if region.width() * res > max || region.height() * res > max {
+            res = max / region.width().max(region.height());
+        }
+        let px = ((region.width() * res) as usize).max(8);
+        let py = ((region.height() * res) as usize).max(8);
+        let trozo = Trozo { clave, region, px, py };
         let (campo, umbrales) = (pat.campo.clone(), pat.umbrales.clone());
         let tono_hecho = self.imagen.as_ref().and_then(|i| self.tono.as_ref().filter(|(k, _)| *k == clave_tono(i, &clave)).map(|(_, t)| t.clone()));
         let gris = self.imagen.as_ref().map(|i| i.gris.clone());
@@ -368,11 +412,12 @@ impl App {
             let tono = tono_hecho.as_ref().or(nuevo.as_ref());
             let d = Dibujo { campo: &campo, umbrales: &umbrales, tono: tono.map(|t| &**t), ajuste: clave.ajuste, limites };
             let t = clave.impresion.map(|_| trazo);
-            let rgba = d.raster(clave.px, clave.py, t);
+            let r = (trozo.region.min.x, trozo.region.min.y, trozo.region.max.x, trozo.region.max.y);
+            let rgba = d.raster_region(r, trozo.px, trozo.py, t);
             let _ = tx.send((rgba, nuevo));
             repintar.request_repaint();
         });
-        self.trabajo_vista = Some(TrabajoVista { clave, rx });
+        self.trabajo_vista = Some(TrabajoVista { trozo, rx });
     }
 
     fn elegir(&mut self, destino: Destino, ctx: &Context) {
@@ -676,7 +721,8 @@ impl App {
         }
     }
 
-    /// La hoja con el dibujo.
+    /// La hoja con el dibujo. Rueda = acercar/alejar hacia el puntero,
+    /// arrastrar = mover, doble clic = ver la hoja entera.
     fn hoja(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
         ui.horizontal(|ui| {
@@ -686,16 +732,70 @@ impl App {
             ui.add_enabled_ui(self.imagen.is_some(), |ui| {
                 ui.selectable_value(&mut self.ver, Ver::Original, t!("Imagen original"));
             });
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if ui.button("+").on_hover_text(t!("Acercar (rueda del ratón)")).clicked() {
+                    self.zoom = (self.zoom * 1.5).min(MAX_ZOOM);
+                }
+                if ui.button(format!("{:.0} %", self.zoom * 100.0)).on_hover_text(t!("Ver la hoja entera (doble clic en la hoja)")).clicked() {
+                    self.zoom = 1.0;
+                    self.centro = None;
+                }
+                if ui.button("−").on_hover_text(t!("Alejar")).clicked() {
+                    self.zoom = (self.zoom / 1.5).max(1.0);
+                    if self.zoom == 1.0 {
+                        self.centro = None;
+                    }
+                }
+            });
         });
         if self.imagen.is_none() && self.ver == Ver::Original {
             self.ver = Ver::Terminado;
         }
         ui.add_space(4.0);
         let pag = self.pagina();
-        let libre = ui.available_rect_before_wrap().shrink(12.0);
-        let escala = (libre.width() / pag.ancho).min(libre.height() / pag.alto).max(0.1);
-        let hoja = Rect::from_center_size(libre.center(), vec2(pag.ancho, pag.alto) * escala);
-        let painter = ui.painter_at(ui.available_rect_before_wrap());
+        let vista = ui.available_rect_before_wrap();
+        let libre = vista.shrink(12.0);
+        let base = (libre.width() / pag.ancho).min(libre.height() / pag.alto).max(0.05);
+        // Interacción: arrastrar mueve, la rueda acerca hacia el puntero.
+        let resp = ui.interact(vista, egui::Id::NULL.with("dedalo_hoja"), Sense::click_and_drag());
+        let mut centro = self.centro.unwrap_or(pos2(pag.ancho / 2.0, pag.alto / 2.0));
+        let escala_de = |z: f32| base * z;
+        if resp.dragged() {
+            centro -= resp.drag_delta() / escala_de(self.zoom);
+            self.centro = Some(centro);
+        }
+        if resp.double_clicked() {
+            self.zoom = 1.0;
+            self.centro = None;
+            centro = pos2(pag.ancho / 2.0, pag.alto / 2.0);
+        }
+        if resp.hovered() {
+            let (rueda, pinza) = ctx.input(|i| (i.smooth_scroll_delta.y, i.zoom_delta()));
+            let factor = (rueda / 300.0).exp() * pinza;
+            if (factor - 1.0).abs() > 1e-4 {
+                let nuevo = (self.zoom * factor).clamp(1.0, MAX_ZOOM);
+                if let Some(ptr) = resp.hover_pos() {
+                    // El punto bajo el puntero se queda quieto.
+                    let bajo = centro + (ptr - libre.center()) / escala_de(self.zoom);
+                    centro = bajo - (ptr - libre.center()) / escala_de(nuevo);
+                }
+                self.zoom = nuevo;
+                self.centro = if nuevo == 1.0 { None } else { Some(centro) };
+                if nuevo == 1.0 {
+                    centro = pos2(pag.ancho / 2.0, pag.alto / 2.0);
+                }
+            }
+        }
+        // Que la hoja no se escape de la vista.
+        centro.x = centro.x.clamp(0.0, pag.ancho);
+        centro.y = centro.y.clamp(0.0, pag.alto);
+        if self.centro.is_some() {
+            self.centro = Some(centro);
+        }
+        let escala = escala_de(self.zoom);
+        let hoja_min = libre.center() - centro.to_vec2() * escala;
+        let hoja = Rect::from_min_size(hoja_min, vec2(pag.ancho, pag.alto) * escala);
+        let painter = ui.painter_at(vista);
         // Sombra y papel.
         painter.rect_filled(hoja.translate(vec2(2.0, 3.0)), 2.0, Color32::from_black_alpha(40));
         painter.rect_filled(hoja, 2.0, Color32::WHITE);
@@ -714,14 +814,15 @@ impl App {
                 let pat = self.patron.as_ref().unwrap();
                 Dibujo { campo: &pat.campo, umbrales: &pat.umbrales, tono: None, ajuste: self.p.ajuste, limites: self.limites() }.extension()
             };
-            let ext = Rect::from_min_max(a_px(x0, y0), a_px(x1, y1));
-            let ppp = ctx.pixels_per_point();
-            let px = ((ext.width() * ppp) as usize).clamp(64, 2400);
-            let py = ((px as f32 * ext.height() / ext.width()) as usize).max(16);
-            self.vista_al_dia(&ctx, px, py);
+            let ext = Rect::from_min_max(pos2(x0, y0), pos2(x1, y1));
+            // Lo que se ve, en mm del dibujo.
+            let a_mm = |p: egui::Pos2| pos2((p.x - hoja.min.x) / escala - origen.0, (p.y - hoja.min.y) / escala - origen.1);
+            let visible = Rect::from_min_max(a_mm(vista.min), a_mm(vista.max)).intersect(ext);
+            self.vista_al_dia(&ctx, visible, ext, escala * ctx.pixels_per_point());
             let pat = self.patron.as_ref().unwrap();
-            if let Some((_, tex)) = &self.vista {
-                painter.image(tex.id(), ext, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+            if let Some((t, tex)) = &self.vista {
+                let r = Rect::from_min_max(a_px(t.region.min.x, t.region.min.y), a_px(t.region.max.x, t.region.max.y));
+                painter.image(tex.id(), r, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
             }
             if self.solucion && self.p.tipo == Tipo::Laberinto && !pat.campo.solucion.is_empty() {
                 let pts: Vec<_> = pat.campo.solucion.iter().map(|&(x, y)| a_px(x, y)).collect();

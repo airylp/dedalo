@@ -68,8 +68,14 @@ impl Dibujo<'_> {
 
     /// Imagen de vista previa de `px` × `py` píxeles de `extension()` (RGBA):
     /// tinta negra con bordes suavizados sobre blanco.
+    #[cfg(test)]
     pub fn raster(&self, px: usize, py: usize, trazo: Option<Trazo>) -> Vec<u8> {
-        let (ex0, ey0, ex1, ey1) = self.extension();
+        self.raster_region(self.extension(), px, py, trazo)
+    }
+
+    /// Como `raster`, pero solo del rectángulo `r` (mm: x0, y0, x1, y1).
+    pub fn raster_region(&self, r: (f32, f32, f32, f32), px: usize, py: usize, trazo: Option<Trazo>) -> Vec<u8> {
+        let (ex0, ey0, ex1, ey1) = r;
         let (aw, ah) = (ex1 - ex0, ey1 - ey0);
         let mm = aw / px as f32;
         let mut out = vec![255u8; px * py * 4];

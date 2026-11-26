@@ -191,8 +191,9 @@ pub fn flujo(ancho: f32, alto: f32, periodo: f32, semilla: u64, tono: Option<&To
         let t = tono.map_or(0.5, |t| if ajuste.niveles { t.nivelada(x, y) } else { t.muestra(x, y) });
         ajuste.aplicar(t)
     };
-    // Separación: 1,6 × periodo en blanco, 0,5 × en negro.
-    let (s_max, s_min) = (1.6 * periodo, 0.5 * periodo);
+    // Separación: 1,15 × periodo en blanco, 0,55 × en negro. Varía poco: el tono
+    // lo da sobre todo el grosor (en lo claro, líneas finas en vez de huecos).
+    let (s_max, s_min) = (1.15 * periodo, 0.55 * periodo);
     let g = periodo / 2.0;
     let mut tonos = Rejilla::new(ancho, alto, g, tono_en);
     tonos.suavizar(1);
@@ -248,8 +249,11 @@ pub fn flujo(ancho: f32, alto: f32, periodo: f32, semilla: u64, tono: Option<&To
             cy[k] = (1.0 - pb) * (2.0 * a_ruido).sin() + pb * (2.0 * a_borde).sin();
         }
     }
-    let dir_x = Rejilla { w, h, paso: g, v: cx };
-    let dir_y = Rejilla { w, h, paso: g, v: cy };
+    let mut dir_x = Rejilla { w, h, paso: g, v: cx };
+    let mut dir_y = Rejilla { w, h, paso: g, v: cy };
+    // Direcciones suaves: curvas sin quiebros.
+    dir_x.suavizar(2);
+    dir_y.suavizar(2);
     let direccion = |x: f32, y: f32| -> (f32, f32) {
         let a = 0.5 * dir_y.muestra(x, y).atan2(dir_x.muestra(x, y));
         (a.cos(), a.sin())
@@ -294,7 +298,7 @@ pub fn flujo(ancho: f32, alto: f32, periodo: f32, semilla: u64, tono: Option<&To
             break;
         };
         let (sx, sy) = semilla_p;
-        if !dentro(sx, sy) || espacio.ocupado(sx, sy, 0.95 * sep(sx, sy), u32::MAX, 0, 0) {
+        if !dentro(sx, sy) || espacio.ocupado(sx, sy, 0.9 * sep(sx, sy), u32::MAX, 0, 0) {
             continue;
         }
         let id = lineas.len() as u32;
@@ -329,7 +333,8 @@ pub fn flujo(ancho: f32, alto: f32, periodo: f32, semilla: u64, tono: Option<&To
         }
         let [adelante, atras] = mitades;
         let largo = (adelante.len() + atras.len()) as f32 * paso_l;
-        if largo < 1.2 * sep(sx, sy) {
+        // Trazos cortos también: mejor un guion que un hueco.
+        if largo < 0.5 * sep(sx, sy) {
             espacio.quitar_linea(id);
             continue;
         }
@@ -347,11 +352,12 @@ pub fn flujo(ancho: f32, alto: f32, periodo: f32, semilla: u64, tono: Option<&To
             cola.push_back((px - ty / l * s, py + tx / l * s));
             cola.push_back((px + ty / l * s, py - tx / l * s));
         }
+        suavizar_linea(&mut linea, 3);
         lineas.push(linea);
     }
 
     // ---- Campo: distancia a la línea más cercana / separación local.
-    let paso = s_min / 8.0;
+    let paso = s_min / 12.0;
     let salto_campo = (2.0 * s_max / paso_l).ceil() as i32;
     let mut seg = Espacio::new(ancho, alto, s_max);
     for (id, l) in lineas.iter().enumerate() {
@@ -360,7 +366,7 @@ pub fn flujo(ancho: f32, alto: f32, periodo: f32, semilla: u64, tono: Option<&To
         }
     }
     let (cw, ch) = ((ancho / paso).ceil() as usize + 1, (alto / paso).ceil() as usize + 1);
-    let mut v = vec![1.0f32; cw * ch];
+    let mut v = vec![s_max; cw * ch];
     let hechas = std::sync::atomic::AtomicUsize::new(0);
     v.par_chunks_mut(cw).enumerate().for_each(|(j, fila)| {
         let y = j as f32 * paso;
@@ -394,17 +400,33 @@ pub fn flujo(ancho: f32, alto: f32, periodo: f32, semilla: u64, tono: Option<&To
                 }
             }
             let (d1, d2) = (d1.sqrt().min(2.0 * s), d2.sqrt().min(2.0 * s));
-            // Cerca del centro de un canal estrecho se fuerza el blanco: el canal
-            // nunca baja de `canal_min` (sin esto quedan hilos de puntos blancos).
-            let (medio, c) = ((d2 - d1) / 2.0, op.canal_min / 2.0);
-            // El centro de la línea (medio muro mínimo) nunca se toca.
-            let libre = if c > 0.0 && d1 > op.muro_min / 2.0 { 0.5 * (1.0 - (medio - c) / c).clamp(0.0, 1.0) } else { 0.0 };
-            *o = (d1 / (d1 + d2).max(1e-6)).max(libre);
+            // Grosor en mm: el tono es la fracción del hueco entre las dos líneas
+            // que lleva tinta, sin bajar del muro mínimo ni dejar un canal menor
+            // que el mínimo. El campo es una distancia (mm): bordes lisos.
+            let hueco = d1 + d2;
+            let t = tonos.muestra(x, y);
+            let medio = (t * hueco / 2.0).max(op.muro_min / 2.0);
+            let tope = ((hueco - op.canal_min) / 2.0).max(op.muro_min / 2.0);
+            *o = d1 - medio.min(tope);
         }
         let n = hechas.fetch_add(1, Ordering::Relaxed);
         ctl.avance.store((800 + n * 200 / ch) as u32, Ordering::Relaxed);
     });
-    Some(Campo { w: cw, h: ch, v, paso, x0: 0.0, y0: 0.0, ancho, alto, solucion: vec![], recortar: true })
+    Some(Campo { w: cw, h: ch, v, paso, x0: 0.0, y0: 0.0, ancho, alto, solucion: vec![], recortar: true, fijo: true })
+}
+
+/// Media móvil [¼ ½ ¼] (`pasadas` veces) sin mover los extremos.
+fn suavizar_linea(l: &mut [(f32, f32)], pasadas: usize) {
+    if l.len() < 3 {
+        return;
+    }
+    let mut prev = l.to_vec();
+    for _ in 0..pasadas {
+        for k in 1..l.len() - 1 {
+            l[k] = (0.25 * prev[k - 1].0 + 0.5 * prev[k].0 + 0.25 * prev[k + 1].0, 0.25 * prev[k - 1].1 + 0.5 * prev[k].1 + 0.25 * prev[k + 1].1);
+        }
+        prev.copy_from_slice(l);
+    }
 }
 
 fn dist2_seg(px: f32, py: f32, ax: f32, ay: f32, bx: f32, by: f32) -> f32 {
@@ -461,5 +483,37 @@ mod tests {
         let (claro, oscuro): (usize, usize) = (5..45).step_by(5).map(|y| (cruces(y as f32, 5.0, 45.0), cruces(y as f32, 55.0, 95.0))).fold((0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
         assert!(frac(5.0, 45.0) > 0.05 && frac(55.0, 95.0) > 0.05);
         assert!(oscuro as f32 > claro as f32 * 1.5, "claro {claro} oscuro {oscuro}");
+    }
+}
+
+#[cfg(test)]
+mod diagnostico {
+    use super::*;
+    use crate::contorno::{Dibujo, Limites};
+    use crate::patron::Umbrales;
+
+    /// Cuántos píxeles de la vista previa quedan en gris intermedio (bordes suavizados).
+    #[test]
+    #[ignore]
+    fn bordes_suavizados() {
+        let img = image::GrayImage::from_fn(200, 200, |x, y| image::Luma([((x + y) / 2) as u8]));
+        let tono = Tono::new(&img, 60.0, 60.0, 4.0);
+        let op = Opciones { zonas: 1, sigue: 0.0, canal_min: 1.2, muro_min: 0.4 };
+        let c = flujo(60.0, 60.0, 4.0, 1, Some(&tono), Ajuste::default(), op, &Control::default()).unwrap();
+        let u = Umbrales::new(&c);
+        let d = Dibujo { campo: &c, umbrales: &u, tono: Some(&tono), ajuste: Ajuste::default(), limites: Limites::new(4.0, 0.4, 1.2) };
+        let r = d.raster_region((20.0, 20.0, 40.0, 40.0), 400, 400, None);
+        let grises = r.chunks(4).filter(|p| p[0] > 10 && p[0] < 245).count();
+        println!("intermedios: {} de {}", grises, 400 * 400);
+        // Pendiente típica.
+        let mut ds = vec![];
+        for k in 0..20 {
+            let (x, y) = (25.0 + k as f32 * 0.37, 30.0);
+            let g = d.valor(x, y);
+            let gx = d.valor(x + 0.05, y) - g;
+            let gy = d.valor(x, y + 0.05) - g;
+            ds.push(format!("{g:.3}/{:.4}", (gx * gx + gy * gy).sqrt()));
+        }
+        println!("{}", ds.join(" "));
     }
 }

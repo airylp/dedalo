@@ -12,7 +12,7 @@ vez rellenado con pluma, aparece la imagen.
    niveles automáticos y negativo ajustan cómo se lee.
 2. **Elige el patrón:**
    - **Líneas de flujo:** líneas que avanzan con curvas suaves sin cruzarse nunca. En lo oscuro se
-     juntan y engordan; en lo claro se separan y adelgazan. Se colocan con el método de Jobard y
+     juntan y engordan; en lo claro se separan un poco y quedan finas (nunca huecos vacíos). Se colocan con el método de Jobard y
      Lefer (1997), con la separación según el tono. Su dirección mezcla ruido suave con la tangente
      de los bordes de la imagen («Siguen la imagen», de 0 a 100 %), así rodean las formas. Con
      **Zonas**, cada banda de tono se rellena con sus propias líneas en otra dirección. Las líneas
@@ -31,13 +31,18 @@ vez rellenado con pluma, aparece la imagen.
    - solo el contorno;
    - los muros ya rellenos, como se verá al terminar.
 
+La vista previa se acerca y se aleja con la rueda del ratón (hacia el puntero), se mueve arrastrando
+y vuelve a la hoja entera con doble clic; al acercar se redibuja nítida la parte visible.
+
+![Vista previa al 400 %](docs/dedalo-zoom.png)
+
 El tono decide, punto a punto, qué fracción de la superficie lleva tinta, igual que una trama de
 imprenta. Por eso el patrón (lo lento de calcular) solo se rehace al cambiar su forma; brillo,
 contraste y estilo de impresión se ven al momento.
 
 ![Laberinto «como se imprime»: contorno negro y muro gris](docs/dedalo-laberinto.png)
 
-Detalle de los PDF (líneas de flujo a 200 ppp y laberinto a 300 ppp):
+Detalle de los PDF (líneas de flujo a 400 ppp y laberinto a 300 ppp):
 
 ![Detalle del PDF con líneas de flujo](docs/dedalo-flujo-pdf.png)
 

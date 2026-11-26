@@ -152,3 +152,6 @@ Bandas de tono: cada una se rellena con sus propias líneas, en otra dirección 
 Siguen la imagen	Follow the image	Suivent l’image
 0 % = curvas al azar; 100 % = rodean las formas de la imagen	0 % = random curves; 100 % = they wrap around the image’s shapes	0 % = courbes au hasard ; 100 % = elles contournent les formes de l’image
 Trazando las líneas…	Drawing the lines…	Tracé des lignes…
+Acercar (rueda del ratón)	Zoom in (mouse wheel)	Zoom avant (molette)
+Ver la hoja entera (doble clic en la hoja)	See the whole page (double-click the page)	Voir la page entière (double-clic sur la page)
+Alejar	Zoom out	Zoom arrière
