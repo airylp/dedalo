@@ -69,7 +69,7 @@ jobs:
           APP=dist/Dedalo.app
           mkdir -p "$APP/Contents/MacOS"
           lipo -create -output "$APP/Contents/MacOS/dedalo" target/aarch64-apple-darwin/release/dedalo target/x86_64-apple-darwin/release/dedalo
-          # Ícono (la «P» de cubos): PNG generados por la propia app → .icns.
+          # Ícono (la «D» de cubos): PNG generados por la propia app → .icns.
           mkdir -p "$APP/Contents/Resources"
           "$APP/Contents/MacOS/dedalo" --iconset dist/dedalo.iconset
           iconutil -c icns dist/dedalo.iconset -o "$APP/Contents/Resources/dedalo.icns"

@@ -157,7 +157,6 @@ colocar_app() {
     fi
     rm -rf "$destino/Dedalo.app"
     mv "$src" "$destino/Dedalo.app"
-    rm -rf "$destino/Keytutil.app"  # nombre anterior a la 0.1.4
     /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$destino/Dedalo.app" 2>/dev/null || true
     ruta="$destino/Dedalo.app"
     if [ "$abierta" = 1 ]; then open "$ruta" || true; fi
@@ -170,12 +169,9 @@ colocar_bin() {
     cp "$1" "$BIN_DIR/.dedalo.nuevo"
     chmod +x "$BIN_DIR/.dedalo.nuevo"
     mv "$BIN_DIR/.dedalo.nuevo" "$BIN_DIR/dedalo"
-    # Hasta la 0.1.3 la app se llamaba «dedalo».
-    rm -f "$BIN_DIR/dedalo" "$DATA/applications/dedalo.desktop"
-    for t in $ICON_SIZES; do rm -f "$DATA/icons/hicolor/${t}x${t}/apps/dedalo.png"; done
     ruta="$BIN_DIR/dedalo"
     if [ -z "${DEDALO_DESTINO:-}" ]; then
-        # Ícono (la «P» de cubos) generado por la propia app, escrito de forma atómica.
+        # Ícono (la «D» de cubos) generado por la propia app, escrito de forma atómica.
         ic="$(mktemp -d)"
         if "$ruta" --iconset "$ic" 2>/dev/null; then
             for t in $ICON_SIZES; do

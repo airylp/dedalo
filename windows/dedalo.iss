@@ -55,12 +55,6 @@ Source: "..\target\release\opengl32.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\target\release\libgallium_wgl.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "MESA.txt"; DestDir: "{app}"; Flags: ignoreversion
 
-[InstallDelete]
-; Hasta la 0.1.3 la app se llamaba «dedalo».
-Type: files; Name: "{app}\dedalo.exe"
-Type: files; Name: "{autoprograms}\dedalo.lnk"
-Type: files; Name: "{autodesktop}\dedalo.lnk"
-
 [Icons]
 Name: "{autoprograms}\dedalo"; Filename: "{app}\dedalo.exe"
 Name: "{autodesktop}\dedalo"; Filename: "{app}\dedalo.exe"; Tasks: desktopicon
