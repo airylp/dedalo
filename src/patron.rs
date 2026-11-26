@@ -14,6 +14,9 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Tipo {
+    /// Líneas de flujo (ver `flujo.rs`).
+    #[serde(rename = "flujo")]
+    Flujo,
     #[serde(rename = "reaccion")]
     Reaccion,
     #[serde(rename = "laberinto")]

@@ -146,3 +146,9 @@ Vuelve a los valores de fábrica del dibujo (no cambia la imagen)	Restores the d
 ✔ Guardado: {p}	✔ Saved: {p}	✔ Enregistré : {p}
 Niveles	Levels	Niveaux
 Automáticos (del blanco al negro)	Automatic (from white to black)	Automatiques (du blanc au noir)
+Líneas de flujo	Flow lines	Lignes de flux
+Zonas	Zones	Zones
+Bandas de tono: cada una se rellena con sus propias líneas, en otra dirección (1 = sin zonas)	Tone bands: each is filled with its own lines, in another direction (1 = no zones)	Bandes de ton : chacune est remplie de ses propres lignes, dans une autre direction (1 = sans zones)
+Siguen la imagen	Follow the image	Suivent l’image
+0 % = curvas al azar; 100 % = rodean las formas de la imagen	0 % = random curves; 100 % = they wrap around the image’s shapes	0 % = courbes au hasard ; 100 % = elles contournent les formes de l’image
+Trazando las líneas…	Drawing the lines…	Tracé des lignes…

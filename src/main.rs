@@ -6,6 +6,7 @@ mod i18n;
 mod app;
 mod contorno;
 mod estilo;
+mod flujo;
 mod icon;
 mod icons;
 mod patron;

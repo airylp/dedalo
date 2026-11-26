@@ -38,6 +38,13 @@ struct ClaveCampo {
     alto: f32,
     periodo: f32,
     semilla: u64,
+    /// Solo líneas de flujo (dependen de la imagen): imagen, ajuste, zonas, cuánto siguen.
+    imagen: usize,
+    ajuste: Option<crate::tono::Ajuste>,
+    zonas: u32,
+    sigue: f32,
+    canal_min: f32,
+    muro_min: f32,
 }
 
 struct Patron {
@@ -108,6 +115,7 @@ pub struct App {
     trabajo: Option<TrabajoPatron>,
     /// Cuándo cambió por última vez la forma pedida (se espera un poco antes de recalcular).
     cambio: Instant,
+    ultima: Option<ClaveCampo>,
     ids: u64,
     tono: Option<(ClaveTono, Arc<Tono>)>,
     vista: Option<(ClaveVista, TextureHandle)>,
@@ -148,8 +156,11 @@ impl App {
             crate::estilo::aplicar_tema(&cc.egui_ctx, crate::estilo::Tema::de_clave(&t));
         }
         let mut p = session.params.unwrap_or_default().sano();
-        if std::env::var("DEDALO_PATRON").as_deref() == Ok("laberinto") {
-            p.tipo = Tipo::Laberinto;
+        match std::env::var("DEDALO_PATRON").as_deref() {
+            Ok("laberinto") => p.tipo = Tipo::Laberinto,
+            Ok("reaccion") => p.tipo = Tipo::Reaccion,
+            Ok("flujo") => p.tipo = Tipo::Flujo,
+            _ => {}
         }
         let mut app = App {
             p,
@@ -160,6 +171,7 @@ impl App {
             patron: None,
             trabajo: None,
             cambio: Instant::now() - Duration::from_secs(1),
+            ultima: None,
             ids: 0,
             tono: None,
             vista: None,
@@ -227,7 +239,20 @@ impl App {
         let pag = self.pagina();
         // Al décimo de mm: un cambio mínimo del margen no rehace el patrón.
         let r = |x: f32| (x * 10.0).round() / 10.0;
-        ClaveCampo { tipo: self.p.tipo, ancho: r(pag.area.0), alto: r(pag.area.1), periodo: self.p.periodo, semilla: self.p.semilla }
+        let flujo = self.p.tipo == Tipo::Flujo;
+        ClaveCampo {
+            tipo: self.p.tipo,
+            ancho: r(pag.area.0),
+            alto: r(pag.area.1),
+            periodo: self.p.periodo,
+            semilla: self.p.semilla,
+            imagen: if flujo { self.imagen.as_ref().map_or(0, |i| Arc::as_ptr(&i.gris) as usize) } else { 0 },
+            ajuste: flujo.then_some(self.p.ajuste),
+            zonas: if flujo { self.p.zonas } else { 0 },
+            sigue: if flujo { self.p.sigue } else { 0.0 },
+            canal_min: if flujo { self.p.canal_min } else { 0.0 },
+            muro_min: if flujo { self.p.muro_min } else { 0.0 },
+        }
     }
 
     fn limites(&self) -> Limites {
@@ -250,6 +275,10 @@ impl App {
             }
         }
         let quiero = self.clave_campo();
+        if self.ultima != Some(quiero) {
+            self.ultima = Some(quiero);
+            self.cambio = Instant::now();
+        }
         if self.patron.as_ref().is_some_and(|p| p.clave == quiero) {
             if let Some(t) = self.trabajo.take() {
                 t.ctl.cancelar.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -275,8 +304,14 @@ impl App {
         let (tx, rx) = channel();
         let (c, k) = (ctl.clone(), quiero);
         let repintar = ctx.clone();
+        let gris = self.imagen.as_ref().map(|i| i.gris.clone());
+        let opciones = crate::flujo::Opciones { zonas: k.zonas, sigue: k.sigue, canal_min: k.canal_min, muro_min: k.muro_min };
         std::thread::spawn(move || {
             let campo = match k.tipo {
+                Tipo::Flujo => {
+                    let tono = gris.map(|g| Tono::new(&g, k.ancho, k.alto, k.periodo));
+                    crate::flujo::flujo(k.ancho, k.alto, k.periodo, k.semilla, tono.as_ref(), k.ajuste.unwrap_or_default(), opciones, &c)
+                }
                 Tipo::Reaccion => crate::patron::reaccion_difusion(k.ancho, k.alto, k.periodo, k.semilla, crate::patron::RD_PASOS, &c),
                 Tipo::Laberinto => crate::patron::laberinto(k.ancho, k.alto, k.periodo, k.semilla, &c),
             };
@@ -549,6 +584,7 @@ impl App {
             rejilla(ui, "patron", |ui| {
                 fila_bloque(ui, t!("Tipo"), None, |ui| {
                     ui.vertical(|ui| {
+                        ui.radio_value(&mut self.p.tipo, Tipo::Flujo, t!("Líneas de flujo"));
                         ui.radio_value(&mut self.p.tipo, Tipo::Reaccion, t!("Rayas (reacción-difusión)"));
                         ui.radio_value(&mut self.p.tipo, Tipo::Laberinto, t!("Laberinto con salida"));
                     });
@@ -568,6 +604,17 @@ impl App {
                         self.otra_semilla();
                     }
                 });
+                if self.p.tipo == Tipo::Flujo {
+                    fila(ui, t!("Zonas"), Some(t!("Bandas de tono: cada una se rellena con sus propias líneas, en otra dirección (1 = sin zonas)")), |ui| {
+                        ui.add(Slider::new(&mut self.p.zonas, 1..=6));
+                    });
+                    fila(ui, t!("Siguen la imagen"), Some(t!("0 % = curvas al azar; 100 % = rodean las formas de la imagen")), |ui| {
+                        let mut pct = (self.p.sigue * 100.0).round();
+                        if ui.add(Slider::new(&mut pct, 0.0..=100.0).suffix(" %").fixed_decimals(0)).changed() {
+                            self.p.sigue = pct / 100.0;
+                        }
+                    });
+                }
                 if self.p.tipo == Tipo::Laberinto {
                     fila(ui, t!("Solución"), None, |ui| {
                         ui.checkbox(&mut self.solucion, t!("Mostrarla en la vista (no se imprime)"));
@@ -688,6 +735,7 @@ impl App {
             painter.rect_filled(caja, 8.0, ui.visuals().window_fill.gamma_multiply(0.95));
             painter.rect_stroke(caja, 8.0, ui.visuals().window_stroke, egui::StrokeKind::Inside);
             let texto = match t.clave.tipo {
+                Tipo::Flujo => t!("Trazando las líneas…"),
                 Tipo::Reaccion => t!("Dejando crecer las rayas…"),
                 Tipo::Laberinto => t!("Trazando el laberinto…"),
             };

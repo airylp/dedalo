@@ -54,12 +54,26 @@ pub struct Parametros {
     pub gris: f32,
     #[serde(rename = "tono", default)]
     pub ajuste: Ajuste,
+    /// Líneas de flujo: bandas de tono, cada una con sus líneas (1 = sin zonas).
+    #[serde(rename = "zonas", default = "tres")]
+    pub zonas: u32,
+    /// Líneas de flujo: cuánto siguen los bordes de la imagen (0–1).
+    #[serde(rename = "siguen_la_imagen", default = "seis_decimos")]
+    pub sigue: f32,
+}
+
+fn tres() -> u32 {
+    3
+}
+
+fn seis_decimos() -> f32 {
+    0.6
 }
 
 impl Default for Parametros {
     fn default() -> Parametros {
         Parametros {
-            tipo: Tipo::Reaccion,
+            tipo: Tipo::Flujo,
             periodo: 4.0,
             muro_min: 0.4,
             canal_min: 1.2,
@@ -71,6 +85,8 @@ impl Default for Parametros {
             linea: 0.2,
             gris: 0.85,
             ajuste: Ajuste::default(),
+            zonas: 3,
+            sigue: 0.6,
         }
     }
 }
@@ -85,6 +101,8 @@ impl Parametros {
         self.margen = self.margen.clamp(0.0, 50.0);
         self.linea = self.linea.clamp(0.05, 1.0);
         self.gris = self.gris.clamp(0.0, 1.0);
+        self.zonas = self.zonas.clamp(1, 8);
+        self.sigue = self.sigue.clamp(0.0, 1.0);
         self.ajuste.contraste = self.ajuste.contraste.clamp(0.3, 3.0);
         self.ajuste.brillo = self.ajuste.brillo.clamp(-1.0, 1.0);
         self
