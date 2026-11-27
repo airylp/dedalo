@@ -66,6 +66,21 @@ pub struct Parametros {
     /// Líneas de flujo: tratamiento de retrato (ojos, cejas, nariz, boca, óvalo y pelo) si hay un rostro.
     #[serde(rename = "retrato", default = "si")]
     pub retrato: bool,
+    /// Líneas de flujo y espiral: grosor máximo de una línea (mm; `GROSOR_SIN_LIMITE` = sin límite).
+    #[serde(rename = "grosor_maximo_mm", default = "sin_limite")]
+    pub grosor_max: f32,
+}
+
+/// En el deslizador de «Grosor máximo», el tope significa «sin límite».
+pub const GROSOR_SIN_LIMITE: f32 = 3.0;
+
+fn sin_limite() -> f32 {
+    GROSOR_SIN_LIMITE
+}
+
+/// Grosor máximo que se usa al dibujar.
+pub fn grosor_real(g: f32) -> f32 {
+    if g >= GROSOR_SIN_LIMITE { f32::MAX } else { g }
 }
 
 fn si() -> bool {
@@ -99,6 +114,7 @@ impl Default for Parametros {
             sigue: 0.5,
             fondo_vacio: false,
             retrato: true,
+            grosor_max: GROSOR_SIN_LIMITE,
         }
     }
 }
@@ -121,7 +137,7 @@ impl Parametros {
         match s {
             Seccion::Imagen => p.ajuste = d.ajuste,
             Seccion::Patron => {
-                (p.periodo, p.muro_min, p.canal_min) = (d.periodo, d.muro_min, d.canal_min);
+                (p.periodo, p.muro_min, p.canal_min, p.grosor_max) = (d.periodo, d.muro_min, d.canal_min, d.grosor_max);
                 if p.tipo == Tipo::Flujo {
                     (p.zonas, p.sigue, p.fondo_vacio, p.retrato) = (d.zonas, d.sigue, d.fondo_vacio, d.retrato);
                 }
@@ -134,7 +150,9 @@ impl Parametros {
 
     /// Valores dentro de lo razonable (el archivo se puede editar a mano).
     pub fn sano(mut self) -> Parametros {
-        self.periodo = self.periodo.clamp(2.0, 20.0);
+        // Por debajo de 2 mm solo líneas de flujo y espiral (las rayas serían enormes de calcular).
+        self.periodo = self.periodo.clamp(if matches!(self.tipo, Tipo::Flujo | Tipo::Espiral) { 1.5 } else { 2.0 }, 20.0);
+        self.grosor_max = self.grosor_max.clamp(0.2, GROSOR_SIN_LIMITE);
         self.muro_min = self.muro_min.clamp(0.1, self.periodo * 0.45);
         self.canal_min = self.canal_min.clamp(0.3, self.periodo * 0.8);
         self.cuadro_cm = self.cuadro_cm.clamp(3.0, 27.0);

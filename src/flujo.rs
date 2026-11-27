@@ -31,6 +31,8 @@ pub struct Opciones {
     pub muro_min: f32,
     /// Sin líneas en las zonas lisas y claras (fondo blanco o de un solo color claro).
     pub fondo_vacio: bool,
+    /// Grosor máximo de una línea (mm; `f32::MAX` = sin límite).
+    pub grosor_max: f32,
 }
 
 /// Rejilla gruesa de valores (tono, zona, dirección).
@@ -238,8 +240,19 @@ pub fn flujo(ancho: f32, alto: f32, periodo: f32, semilla: u64, tono: Option<&To
     };
     let region_en = |x: f32, y: f32| region.cercano(x, y) as u32;
     let k_detalle = if cara.is_some() { 0.7 } else { 1.0 };
-    let (s_max, s_min) = (k_claro.max(k_oscuro) * periodo, k_claro.min(k_oscuro) * periodo * k_detalle);
-    let sep = |x: f32, y: f32| (k_claro * periodo + (k_oscuro - k_claro) * periodo * tonos.muestra(x, y)) * (1.0 - (1.0 - k_detalle) * detalle.muestra(x, y) * (1.0 - tonos.muestra(x, y)));
+    // Rostro: unas `LINEAS_CARA` líneas a lo ancho de la cara (y algo menos en el pelo), sea cual
+    // sea la separación general: con 4 mm en una cara de 6 cm solo cabían 12 y los rasgos se perdían.
+    let lineas_cara: f32 = std::env::var("DEDALO_LINEAS_CARA").ok().and_then(|v| v.parse().ok()).unwrap_or(26.0);
+    let k_cara = cara.map_or(1.0, |c| (2.0 * c.semi.0 / lineas_cara / periodo).clamp(0.4, 1.0));
+    let mut denso = Rejilla::new(ancho, alto, g, |x, y| match region.cercano(x, y) as u32 {
+        1 => k_cara,
+        2 => 0.5 + 0.5 * k_cara,
+        _ => 1.0,
+    });
+    denso.suavizar(2);
+    denso.suavizar(2);
+    let (s_max, s_min) = (k_claro.max(k_oscuro) * periodo, k_claro.min(k_oscuro) * periodo * k_detalle * k_cara);
+    let sep = |x: f32, y: f32| (k_claro * periodo + (k_oscuro - k_claro) * periodo * tonos.muestra(x, y)) * (1.0 - (1.0 - k_detalle) * detalle.muestra(x, y) * (1.0 - tonos.muestra(x, y))) * denso.muestra(x, y);
     // (solo en lo claro: en lo oscuro, juntar las líneas deja sin sitio la tinta por el canal mínimo).
 
     // Zonas: bandas de tono muy suavizado (y, en un retrato, cara / pelo / resto).
@@ -317,6 +330,8 @@ pub fn flujo(ancho: f32, alto: f32, periodo: f32, semilla: u64, tono: Option<&To
     let mut cx = vec![0.0f32; w * h];
     let mut cy = vec![0.0f32; w * h];
     let base_ang = 0.55f32;
+    let env = |n: &str, d: f32| std::env::var(n).ok().and_then(|v| v.parse::<f32>().ok()).unwrap_or(d);
+    let (k_fino, k_ovalo, k_anillo) = (env("DEDALO_FINO", 3.0), env("DEDALO_OVALO", 1.2), env("DEDALO_ANILLO", 0.0));
     // Ondulación de espagueti: la dirección gira un poco con un ruido de escala media.
     let ondas = Ruido::new(semilla ^ 0x5A, 7.0 * periodo, ancho, alto);
     let amplitud = 0.35 * (1.0 - 0.5 * op.sigue);
@@ -348,24 +363,30 @@ pub fn flujo(ancho: f32, alto: f32, periodo: f32, semilla: u64, tono: Option<&To
                 }
                 amp = 0.0;
             } else {
-                for (p, (a, b, c)) in &escalas {
-                    t[0] += op.sigue.max(0.05) * p * a.v[k];
-                    t[1] += op.sigue.max(0.05) * p * b.v[k];
-                    t[2] += op.sigue.max(0.05) * p * c.v[k];
+                // En la cara cuentan más las escalas finas (arrugas, sombras de la expresión).
+                for (e, (p, (a, b, c))) in escalas.iter().enumerate() {
+                    let f = op.sigue.max(0.05) * p * if reg == 1 && e < 2 { k_fino } else { 1.0 };
+                    t[0] += f * a.v[k];
+                    t[1] += f * b.v[k];
+                    t[2] += f * c.v[k];
                 }
             }
             if let Some(c) = cara {
                 // Las líneas corren paralelas al óvalo, a las cejas, la nariz y los labios…
+                // (por dentro el óvalo alcanza poco: si no, la cara entera queda en anillos concéntricos).
                 let (d, tg) = cerca(&c.ovalo, x, y);
-                sumar(&mut t, 1.5 * (-(d / (2.5 * periodo)).powi(2)).exp(), (-tg.1, tg.0));
+                let alcance = if reg == 1 { k_ovalo * periodo * k_cara } else { 2.5 * periodo };
+                sumar(&mut t, 1.5 * (-(d / alcance).powi(2)).exp(), (-tg.1, tg.0));
                 for l in &c.guias {
                     let (d, tg) = cerca(l, x, y);
-                    sumar(&mut t, 2.0 * (-(d / (1.2 * periodo)).powi(2)).exp(), (-tg.1, tg.0));
+                    sumar(&mut t, 2.0 * (-(d / (1.2 * periodo * k_cara)).powi(2)).exp(), (-tg.1, tg.0));
                 }
-                // …y giran alrededor de los ojos.
-                for o in &c.ojos {
-                    let (rho, n) = o.polar(x, y);
-                    sumar(&mut t, 3.0 * (1.0 - suave_paso(1.4, 2.1, rho)), n);
+                // …y en el iris giran un poco.
+                if k_anillo > 0.0 {
+                    for o in &c.ojos {
+                        let (rho, n) = o.polar(x, y);
+                        sumar(&mut t, k_anillo * (1.0 - suave_paso(0.8, 1.3, rho)), n);
+                    }
                 }
                 // La cara sin ondular; el fondo, tranquilo.
                 amp *= if reg == 1 { 0.15 } else { 0.5 };
@@ -389,13 +410,14 @@ pub fn flujo(ancho: f32, alto: f32, periodo: f32, semilla: u64, tono: Option<&To
     };
 
     // ---- Jobard–Lefer
-    let paso_l = 0.1 * periodo;
+    let paso_l = 0.1 * periodo * k_cara;
     // Una línea se detiene al acercarse a otra a esta fracción de la separación: baja = líneas largas (espagueti).
-    let prueba: f32 = std::env::var("DEDALO_PRUEBA").ok().and_then(|v| v.parse().ok()).unwrap_or(0.35);
+    let prueba: f32 = std::env::var("DEDALO_PRUEBA").ok().and_then(|v| v.parse().ok()).unwrap_or(0.25);
     // Dos líneas nunca se acercan más de lo que cabe: un canal y dos medios muros… y algo de holgura.
     let cabe = 1.15 * (op.canal_min + op.muro_min);
     let mut espacio = Espacio::new(ancho, alto, s_max);
     let mut lineas: Vec<Vec<(f32, f32)>> = vec![];
+    let mut zona_de: Vec<u32> = vec![];
     let dentro = |x: f32, y: f32| x >= 0.0 && y >= 0.0 && x <= ancho && y <= alto;
     let mut az = Azar::new(semilla);
     // Semillas de reserva: rejilla con algo de azar, en orden aleatorio.
@@ -485,12 +507,15 @@ pub fn flujo(ancho: f32, alto: f32, periodo: f32, semilla: u64, tono: Option<&To
         }
         suavizar_linea(&mut linea, 12);
         lineas.push(linea);
+        zona_de.push(zona);
     }
 
+    // Líneas más continuas: se unen los extremos que se miran de frente y están cerca.
+    let lineas = unir_extremos(lineas, &zona_de, &sep, paso_l);
     // ---- Campo: distancia a la línea más cercana / separación local.
     // Rejilla fina (independiente de la separación): las líneas más finas (muro
     // mínimo) deben medir varias muestras.
-    let paso = (0.55 * periodo / 12.0).min(op.muro_min / 4.0).max(0.04);
+    let paso = (0.55 * periodo * k_cara / 12.0).min(op.muro_min / 4.0).max(0.04);
     let salto_campo = (2.0 * s_max / paso_l).ceil() as i32;
     let mut seg = Espacio::new(ancho, alto, s_max);
     for (id, l) in lineas.iter().enumerate() {
@@ -577,7 +602,7 @@ pub fn flujo(ancho: f32, alto: f32, periodo: f32, semilla: u64, tono: Option<&To
                     // línea con el detalle de la imagen, como en el grabado.
                     let t = tono_en(x, y);
                     let medio = (t * hueco / 2.0).max(op.muro_min / 2.0);
-                    let tope = ((hueco - op.canal_min) / 2.0).max(op.muro_min / 2.0);
+                    let tope = ((hueco - op.canal_min) / 2.0).max(op.muro_min / 2.0).min(op.grosor_max / 2.0);
                     bloque[fj * cw + i] = d1 - medio.min(tope);
                 }
             }
@@ -606,6 +631,85 @@ pub fn flujo(ancho: f32, alto: f32, periodo: f32, semilla: u64, tono: Option<&To
         }
     }
     Some(Campo { w: cw, h: ch, v, paso, x0: 0.0, y0: 0.0, ancho, alto, solucion: vec![], recortar: true, fijo: true })
+}
+
+/// Une las parejas de extremos de líneas de la misma zona que están a menos de dos
+/// separaciones y se miran de frente (cada una apunta a la otra), con un puente de
+/// Hermite que sigue las dos tangentes. Se repite mientras haya parejas.
+fn unir_extremos(mut lineas: Vec<Vec<(f32, f32)>>, zona: &[u32], sep: &impl Fn(f32, f32) -> f32, paso: f32) -> Vec<Vec<(f32, f32)>> {
+    let mut zona = zona.to_vec();
+    // Extremo: (línea, ¿es el final?, punto, tangente hacia fuera normalizada).
+    let extremos = |lineas: &[Vec<(f32, f32)>]| {
+        let mut v = vec![];
+        for (k, l) in lineas.iter().enumerate() {
+            let n = l.len();
+            if n < 4 {
+                continue;
+            }
+            for (fin, p, q) in [(false, l[0], l[3]), (true, l[n - 1], l[n - 4])] {
+                let (tx, ty) = (p.0 - q.0, p.1 - q.1);
+                let t = tx.hypot(ty).max(1e-6);
+                v.push((k, fin, p, (tx / t, ty / t)));
+            }
+        }
+        v
+    };
+    loop {
+        let ext = extremos(&lineas);
+        let mut parejas = vec![];
+        for (i, &(k, _, p, t)) in ext.iter().enumerate() {
+            for (j, &(k2, _, q, u)) in ext.iter().enumerate().skip(i + 1) {
+                if k2 == k || zona[k] != zona[k2] {
+                    continue;
+                }
+                let (dx, dy) = (q.0 - p.0, q.1 - p.1);
+                let dl = dx.hypot(dy);
+                if dl > 2.0 * sep(p.0, p.1) || dl < 1e-6 {
+                    continue;
+                }
+                let (ca, cb) = ((t.0 * dx + t.1 * dy) / dl, -(u.0 * dx + u.1 * dy) / dl);
+                if ca > 0.7 && cb > 0.7 {
+                    parejas.push((dl / sep(p.0, p.1) * (3.0 - ca - cb), i, j));
+                }
+            }
+        }
+        if parejas.is_empty() {
+            return lineas;
+        }
+        parejas.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let mut usada = vec![false; lineas.len()];
+        let mut quitar = vec![];
+        for (_, i, j) in parejas {
+            let ((ka, fin_a, p, t), (kb, fin_b, q, u)) = (ext[i], ext[j]);
+            if usada[ka] || usada[kb] {
+                continue;
+            }
+            (usada[ka], usada[kb]) = (true, true);
+            let mut a = std::mem::take(&mut lineas[ka]);
+            let mut b = std::mem::take(&mut lineas[kb]);
+            if !fin_a {
+                a.reverse();
+            }
+            if fin_b {
+                b.reverse();
+            }
+            let dl = (q.0 - p.0).hypot(q.1 - p.1);
+            let n = (dl / paso).ceil() as usize;
+            for s in 1..n {
+                let x = s as f32 / n as f32;
+                let (h00, h10, h01, h11) = (2.0 * x.powi(3) - 3.0 * x * x + 1.0, x.powi(3) - 2.0 * x * x + x, -2.0 * x.powi(3) + 3.0 * x * x, x.powi(3) - x * x);
+                a.push((h00 * p.0 + h10 * dl * t.0 + h01 * q.0 - h11 * dl * u.0, h00 * p.1 + h10 * dl * t.1 + h01 * q.1 - h11 * dl * u.1));
+            }
+            a.extend(b);
+            lineas[ka] = a;
+            quitar.push(kb);
+        }
+        quitar.sort_unstable();
+        for k in quitar.into_iter().rev() {
+            lineas.remove(k);
+            zona.remove(k);
+        }
+    }
 }
 
 /// (radio de suavizado en celdas de medio periodo, peso) de cada escala del tensor.
@@ -661,7 +765,7 @@ mod tests {
         let img = image::GrayImage::from_fn(200, 100, |x, _| image::Luma([if x < 100 { 255 } else { 0 }]));
         let tono = Tono::new(&img, 100.0, 50.0, 4.0);
         let ajuste = Ajuste { niveles: false, ..Default::default() };
-        let c = flujo(100.0, 50.0, 4.0, 3, Some(&tono), ajuste, Opciones { zonas: 1, sigue: 0.0, canal_min: 1.0, muro_min: 0.4, fondo_vacio: false }, None, &Control::default()).unwrap();
+        let c = flujo(100.0, 50.0, 4.0, 3, Some(&tono), ajuste, Opciones { zonas: 1, sigue: 0.0, canal_min: 1.0, muro_min: 0.4, fondo_vacio: false, grosor_max: f32::MAX }, None, &Control::default()).unwrap();
         // Fracción con tinta (campo < 0) a cada lado, lejos del borde central.
         let tinta = |x0: f32, x1: f32| {
             let (mut n, mut t) = (0, 0);
@@ -689,33 +793,39 @@ mod retrato {
     /// Con un rostro, las líneas se ordenan alrededor de los ojos: cerca del iris
     /// hay más líneas (anillos) que lejos.
     #[test]
-    fn anillos_en_los_ojos() {
+    fn lineas_a_lo_largo_del_ojo() {
         let e = crate::ejemplos::buscar("lincoln").unwrap();
         let img = image::load_from_memory(e.datos).unwrap();
         let r = crate::rostro::detectar(&img.to_rgb8()).unwrap();
         let (ancho, alto) = (200.0, 200.0 * img.height() as f32 / img.width() as f32);
         let cara = crate::rostro::Cara::new(&r, ancho, alto);
-        let tono = Tono::new(&crate::tono::gris(&img), ancho, alto, 3.0);
-        let op = Opciones { zonas: 1, sigue: 0.5, canal_min: 1.2, muro_min: 0.4, fondo_vacio: false };
+        let tono = Tono::new(&crate::tono::gris(&img), ancho, alto, 5.0);
+        let op = Opciones { zonas: 1, sigue: 0.5, canal_min: 0.4, muro_min: 0.15, fondo_vacio: false, grosor_max: f32::MAX };
         let o = cara.ojos[0];
-        let cruces = |cara: Option<&Cara>| {
-            let c = flujo(ancho, alto, 3.0, 1, Some(&tono), Ajuste::default(), op, cara, &Control::default()).unwrap();
-            // Bordes de tinta que cruza un círculo alrededor del ojo: un anillo no se cruza.
-            let mut n = 0;
-            let mut antes = None;
-            for k in 0..=200 {
-                let a = k as f32 / 200.0 * std::f32::consts::TAU;
-                let (x, y) = (o.c.0 + 1.5 * o.a * a.cos(), o.c.1 + 1.5 * o.a * a.sin());
-                let tinta = c.at((x / c.paso).round() as usize, (y / c.paso).round() as usize) < 0.0;
-                if antes.is_some_and(|b| b != tinta) {
-                    n += 1;
+        let a_ojo = o.ang;
+        let paralelas = |cara: Option<&Cara>| {
+            let c = flujo(ancho, alto, 5.0, 1, Some(&tono), Ajuste::default(), op, cara, &Control::default()).unwrap();
+            // Junto al ojo (encima y debajo), el campo crece en perpendicular a las líneas:
+            // si siguen los párpados, su gradiente es perpendicular al eje del ojo.
+            let (mut suma, mut n) = (0.0, 0);
+            for k in -20..=20 {
+                for lado in [-1.0f32, 1.0] {
+                    let t = k as f32 / 20.0 * 0.9 * o.a;
+                    let h = lado * 0.5 * o.a;
+                    let (x, y) = (o.c.0 + t * a_ojo.cos() - h * a_ojo.sin(), o.c.1 + t * a_ojo.sin() + h * a_ojo.cos());
+                    let (i, j) = ((x / c.paso).round() as usize, (y / c.paso).round() as usize);
+                    let (gx, gy) = (c.at(i + 2, j) - c.at(i - 2, j), c.at(i, j + 2) - c.at(i, j - 2));
+                    let g = gx.hypot(gy);
+                    if g > 1e-4 {
+                        suma += ((-a_ojo.sin() * gx + a_ojo.cos() * gy) / g).abs();
+                        n += 1;
+                    }
                 }
-                antes = Some(tinta);
             }
-            n
+            suma / n as f32
         };
-        let (con, sin) = (cruces(Some(&cara)), cruces(None));
-        assert!(con * 2 <= sin, "alrededor del ojo: {con} bordes con retrato, {sin} sin él");
+        let (con, sin) = (paralelas(Some(&cara)), paralelas(None));
+        assert!(con > 0.97 && con > sin, "junto al ojo: {con:.2} con retrato, {sin:.2} sin él (1 = líneas a lo largo del ojo)");
     }
 }
 
@@ -731,7 +841,7 @@ mod diagnostico {
     fn bordes_suavizados() {
         let img = image::GrayImage::from_fn(200, 200, |x, y| image::Luma([((x + y) / 2) as u8]));
         let tono = Tono::new(&img, 60.0, 60.0, 4.0);
-        let op = Opciones { zonas: 1, sigue: 0.0, canal_min: 1.2, muro_min: 0.4, fondo_vacio: false };
+        let op = Opciones { zonas: 1, sigue: 0.0, canal_min: 1.2, muro_min: 0.4, fondo_vacio: false, grosor_max: f32::MAX };
         let c = flujo(60.0, 60.0, 4.0, 1, Some(&tono), Ajuste::default(), op, None, &Control::default()).unwrap();
         let u = Umbrales::new(&c);
         let d = Dibujo { campo: &c, umbrales: &u, tono: Some(&tono), ajuste: Ajuste::default(), limites: Limites::new(4.0, 0.4, 1.2) };
@@ -775,14 +885,16 @@ mod retratos {
             let lado: f32 = std::env::var("DEDALO_LADO").ok().and_then(|v| v.parse().ok()).unwrap_or(150.0);
             let (ancho, alto) = if asp > 1.0 { (lado, lado / asp) } else { (lado * asp, lado) };
             let tono = Tono::new(&img, ancho, alto, periodo);
-            let op = Opciones { zonas, sigue, canal_min: 1.2, muro_min: 0.4, fondo_vacio: false };
+            let muro: f32 = std::env::var("DEDALO_MURO").ok().and_then(|v| v.parse().ok()).unwrap_or(0.4);
+            let canal: f32 = std::env::var("DEDALO_CANAL").ok().and_then(|v| v.parse().ok()).unwrap_or(1.2);
+            let op = Opciones { zonas, sigue, canal_min: canal, muro_min: muro, fondo_vacio: false, grosor_max: f32::MAX };
             let t = std::time::Instant::now();
             // DEDALO_RETRATO=0: sin tratamiento de rostro.
             let cara = if std::env::var("DEDALO_RETRATO").is_ok_and(|v| v == "0") { None } else { crate::rostro::detectar(&image::open(&p).unwrap().to_rgb8()).map(|r| crate::rostro::Cara::new(&r, ancho, alto)) };
             println!("rostro: {}", cara.is_some());
             let c = flujo(ancho, alto, periodo, 1, Some(&tono), Ajuste::default(), op, cara.as_ref(), &Control::default()).unwrap();
             let u = Umbrales::new(&c);
-            let d = Dibujo { campo: &c, umbrales: &u, tono: Some(&tono), ajuste: Ajuste::default(), limites: Limites::new(periodo, 0.4, 1.2) };
+            let d = Dibujo { campo: &c, umbrales: &u, tono: Some(&tono), ajuste: Ajuste::default(), limites: Limites::new(periodo, muro, canal) };
             let py = 900usize;
             let px = (py as f32 * ancho / alto) as usize;
             let r = d.raster(px, py, None);
@@ -810,7 +922,7 @@ mod tiempo {
         let (ancho, alto) = (139.5, 232.0);
         let tono = Tono::new(&crate::tono::gris(&img), ancho, alto, 4.0);
         let cara = crate::rostro::detectar(&img.to_rgb8()).map(|r| crate::rostro::Cara::new(&r, ancho, alto));
-        let op = Opciones { zonas: 1, sigue: 0.5, canal_min: 1.2, muro_min: 0.4, fondo_vacio: false };
+        let op = Opciones { zonas: 1, sigue: 0.5, canal_min: 1.2, muro_min: 0.4, fondo_vacio: false, grosor_max: f32::MAX };
         let t = std::time::Instant::now();
         let c = flujo(ancho, alto, 4.0, 1, Some(&tono), Ajuste::default(), op, cara.as_ref(), &Control::default()).unwrap();
         println!("{}×{} muestras: {:?}", c.w, c.h, t.elapsed());

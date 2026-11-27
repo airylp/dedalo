@@ -17,10 +17,11 @@ vez rellenado con pluma, aparece la imagen.
      oscuro engordan hasta dejar solo el canal mínimo; en lo claro quedan finas (nunca huecos vacíos). Se
      colocan con el método de Jobard y Lefer (1997). Son largas, como espagueti: rodean las formas de la
      imagen como curvas de nivel (tensor de estructura a varias escalas, del detalle a la forma grande,
-     con una ondulación suave; «Siguen la imagen», de 0 a 100 %). Con **Retrato** (activado si se encuentra
-     un rostro), los rasgos tienen un trato especial: las líneas giran en anillos alrededor del iris,
-     corren paralelas al óvalo de la cara, a las cejas, la nariz y los labios, se juntan para dar más
-     detalle en los rasgos y en el pelo siguen los mechones, separadas de la frente. Con
+     con una ondulación suave; «Siguen la imagen», de 0 a 100 %). Los extremos que quedan de frente se
+     unen, así hay menos cortes. Con **Retrato** (activado si se encuentra un rostro), la cara lleva unas
+     26 líneas a lo ancho sea cual sea la separación, y las líneas siguen los párpados, las cejas, la
+     nariz, los surcos de la nariz a la boca y los labios; en el pelo siguen los mechones. Con
+     **Grosor máximo** las líneas no pasan de cierto grosor aunque la zona sea oscura. Con
      **Zonas**, cada banda de tono se rellena con sus propias líneas en otra dirección. Con **Fondo liso**,
      las zonas claras de un solo tono (por ejemplo, un fondo blanco) quedan sin líneas. Las líneas
      nunca se acercan más que un canal mínimo y dos muros mínimos, así siempre cabe la pluma.
@@ -29,6 +30,9 @@ vez rellenado con pluma, aparece la imagen.
    - **Laberinto con salida:** un laberinto perfecto, con un solo camino de la entrada (arriba a la
      izquierda) a la salida (abajo a la derecha). La vista puede mostrar la solución, que no se
      imprime.
+   - **Espiral:** una sola línea que sale del centro y gira hasta cubrir la hoja. En lo oscuro las
+     vueltas se juntan y la línea engorda; en lo claro se separan y adelgaza. Se imprime terminada:
+     no hay nada que rellenar.
 3. **Separación:** la distancia de un canal al siguiente. **Muro mínimo** y **canal mínimo**
    garantizan que siempre quede un trazo visible y sitio para la pluma.
 4. **Hoja:** carta completa (horizontal si la imagen es apaisada) o un cuadro de N cm centrado, con
@@ -66,6 +70,10 @@ Retratos de dominio público (Wikimedia Commons) en hoja carta con 2,5 mm de sep
 ![Lincoln con líneas de flujo](docs/dedalo-retrato-lincoln.png)
 
 ![Marie Curie con líneas de flujo](docs/dedalo-retrato-curie.png)
+
+Espiral sobre el retrato de Lincoln:
+
+![Espiral de una sola línea sobre el retrato de Lincoln](docs/dedalo-espiral.png)
 
 Rayas de reacción-difusión:
 

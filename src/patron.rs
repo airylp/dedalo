@@ -21,6 +21,9 @@ pub enum Tipo {
     Reaccion,
     #[serde(rename = "laberinto")]
     Laberinto,
+    /// Una línea en espiral desde el centro (ver `espiral.rs`).
+    #[serde(rename = "espiral")]
+    Espiral,
 }
 
 /// Valores muestreados en una rejilla regular (en mm, desde la esquina superior

@@ -179,9 +179,15 @@ Buscando el rostro…	Looking for a face…	Recherche du visage…
 Rostro encontrado: corrige los puntos en «Imagen original»	Face found: adjust the points in “Original image”	Visage trouvé : corrigez les points dans « Image originale »
 No se encontró un rostro	No face found	Aucun visage trouvé
 Retrato	Portrait	Portrait
-Trato especial de ojos (anillos), cejas, nariz, boca, óvalo de la cara y pelo	Special treatment for eyes (rings), eyebrows, nose, mouth, face outline and hair	Traitement spécial des yeux (anneaux), sourcils, nez, bouche, ovale du visage et cheveux
+Más líneas en la cara; siguen párpados, cejas, nariz, surcos y boca; el pelo va en mechones	More lines on the face; they follow eyelids, eyebrows, nose, folds and mouth; hair in strands	Plus de lignes sur le visage ; elles suivent paupières, sourcils, nez, sillons et bouche ; cheveux en mèches
 Ojos, cejas, nariz, boca y pelo	Eyes, eyebrows, nose, mouth and hair	Yeux, sourcils, nez, bouche et cheveux
 Deshacer correcciones	Undo corrections	Annuler les corrections
 Arrastra para corregir	Drag to adjust	Faites glisser pour corriger
 Restablecer esta sección	Reset this section	Réinitialiser cette section
 Ya tiene los valores de fábrica	Already at default values	Déjà aux valeurs par défaut
+Espiral (una sola línea, terminada)	Spiral (a single line, finished)	Spirale (une seule ligne, terminée)
+Grosor máximo	Maximum thickness	Épaisseur maximale
+Lo más gruesa que puede ser una línea, aunque la zona sea oscura: menos = líneas más finas	The thickest a line can be, even in dark areas: less = thinner lines	L’épaisseur maximale d’une ligne, même dans les zones sombres : moins = lignes plus fines
+sin límite	no limit	sans limite
+La espiral se imprime terminada: no hay nada que rellenar	The spiral is printed finished: nothing to fill in	La spirale s’imprime terminée : rien à remplir
+Girando la espiral…	Turning the spiral…	Tracé de la spirale…

@@ -217,7 +217,27 @@ impl Cara {
             (x0, x1, y0, y1) = (x0.min(x), x1.max(x), y0.min(y), y1.max(y));
         }
         let ceja = |idx: &[usize]| curva(&idx[..5]);
-        let guias = vec![ceja(CEJA_I), ceja(CEJA_D), curva(PUENTE), curva(BASE_NARIZ), cerrada(LABIOS), curva(BOCA)];
+        // Párpados: el contorno del ojo va por abajo de la esquina de fuera a la de dentro (9 puntos) y vuelve por arriba.
+        let parpados = |idx: &[usize]| {
+            let mut arriba = curva(&idx[8..]);
+            arriba.insert(0, mm(idx[8]));
+            arriba.push(mm(idx[0]));
+            [curva(&idx[..9]), arriba]
+        };
+        // Surcos de la nariz a la boca (nasogenianos): de la aleta, por fuera de la comisura, y un poco más abajo.
+        let ancho_cara = x1 - x0;
+        let surco = |aleta: usize, comisura: usize, lado: f32| {
+            let (a, c) = (mm(aleta), mm(comisura));
+            let p0 = (a.0 + lado * 0.05 * ancho_cara, a.1);
+            let p1 = (c.0 + lado * 0.06 * ancho_cara, c.1);
+            let p2 = (p1.0 + 0.4 * (p1.0 - p0.0), p1.1 + 0.4 * (p1.1 - p0.1));
+            vec![p0, p1, p2]
+        };
+        let mut guias = vec![ceja(CEJA_I), ceja(CEJA_D), curva(PUENTE), curva(BASE_NARIZ), cerrada(LABIOS), curva(BOCA)];
+        guias.extend(parpados(OJO_I));
+        guias.extend(parpados(OJO_D));
+        guias.push(surco(98, 61, -1.0));
+        guias.push(surco(327, 291, 1.0));
         let mut rasgos = guias.clone();
         rasgos.push(cerrada(OJO_I));
         rasgos.push(cerrada(OJO_D));
