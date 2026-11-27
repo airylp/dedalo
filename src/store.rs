@@ -1,6 +1,7 @@
 //! Configuración de dedalo: idioma, tema y los parámetros del dibujo, en
 //! `<config>/sesion.toml`.
 
+use crate::espiral::AjusteEspiral;
 use crate::patron::Tipo;
 use crate::salida::{Impresion, Tamano};
 use crate::tono::Ajuste;
@@ -69,6 +70,9 @@ pub struct Parametros {
     /// Líneas de flujo y espiral: grosor máximo de una línea (mm; `GROSOR_SIN_LIMITE` = sin límite).
     #[serde(rename = "grosor_maximo_mm", default = "sin_limite")]
     pub grosor_max: f32,
+    /// Espirales: origen, separación en claro y oscuro, suavizado, línea…
+    #[serde(rename = "espiral", default)]
+    pub espiral: AjusteEspiral,
 }
 
 /// En el deslizador de «Grosor máximo», el tope significa «sin límite».
@@ -115,6 +119,7 @@ impl Default for Parametros {
             fondo_vacio: false,
             retrato: true,
             grosor_max: GROSOR_SIN_LIMITE,
+            espiral: AjusteEspiral::default(),
         }
     }
 }
@@ -144,6 +149,9 @@ impl Parametros {
                 if p.tipo == Tipo::EspiralDensa {
                     p.retrato = d.retrato;
                 }
+                if matches!(p.tipo, Tipo::Espiral | Tipo::EspiralDensa) {
+                    p.espiral = d.espiral;
+                }
             }
             Seccion::Hoja => (p.tamano, p.cuadro_cm, p.margen) = (d.tamano, d.cuadro_cm, d.margen),
             Seccion::Impresion => (p.impresion, p.linea, p.gris) = (d.impresion, d.linea, d.gris),
@@ -156,6 +164,7 @@ impl Parametros {
         // Por debajo de 2 mm solo líneas de flujo y espiral (las rayas serían enormes de calcular).
         self.periodo = self.periodo.clamp(if matches!(self.tipo, Tipo::Flujo | Tipo::Espiral | Tipo::EspiralDensa) { 1.5 } else { 2.0 }, 20.0);
         self.grosor_max = self.grosor_max.clamp(0.2, GROSOR_SIN_LIMITE);
+        self.espiral = self.espiral.sano();
         self.muro_min = self.muro_min.clamp(0.1, self.periodo * 0.45);
         self.canal_min = self.canal_min.clamp(0.3, self.periodo * 0.8);
         self.cuadro_cm = self.cuadro_cm.clamp(3.0, 27.0);

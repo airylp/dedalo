@@ -11,31 +11,95 @@ use rayon::prelude::*;
 use std::f32::consts::TAU;
 use std::sync::atomic::Ordering;
 
-/// Separación entre vueltas (× periodo) en blanco y en negro.
-const SEP_CLARO: f32 = 1.15;
-const SEP_OSCURO: f32 = 0.7;
+/// Ajustes propios de las espirales (se guardan en la sesión).
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct AjusteEspiral {
+    /// Punto de inicio en fracción del área (0–1); sin él: el centro (o la cara, en la densa).
+    #[serde(rename = "origen", skip_serializing_if = "Option::is_none")]
+    pub centro: Option<(f32, f32)>,
+    /// Espiral: cuánto cambia la separación con el tono (0 = nada; 0,45 = de 1,23·p en blanco a 0,78·p en negro).
+    #[serde(rename = "variacion")]
+    pub variacion: f32,
+    /// Escala (mm) a la que se suaviza el tono que decide la separación: menos = más detalle.
+    #[serde(rename = "suavizado_mm")]
+    pub suavizado: f32,
+    /// Lo mismo en la espiral densa (más fino: ahí el tono es la densidad de vueltas).
+    #[serde(rename = "suavizado_densa_mm")]
+    pub suavizado_densa: f32,
+    /// Densa: separación entre vueltas en blanco y en negro (mm).
+    #[serde(rename = "claro_mm")]
+    pub claro: f32,
+    #[serde(rename = "oscuro_mm")]
+    pub oscuro: f32,
+    /// Densa: grosor de la línea (mm) y cuánto engorda en lo oscuro (0 = nada, 1 = el doble).
+    #[serde(rename = "linea_mm")]
+    pub linea: f32,
+    #[serde(rename = "engorde")]
+    pub engorde: f32,
+    /// Densa con rostro: parar al abarcar cara, pelo y cuello (si no, toda el área).
+    #[serde(rename = "solo_rostro")]
+    pub solo_rostro: bool,
+}
+
+impl Default for AjusteEspiral {
+    fn default() -> AjusteEspiral {
+        AjusteEspiral { centro: None, variacion: 0.45, suavizado: 3.0, suavizado_densa: 1.5, claro: 8.0, oscuro: 0.8, linea: 0.35, engorde: 0.8, solo_rostro: true }
+    }
+}
+
+impl AjusteEspiral {
+    /// Valores dentro de lo razonable (el archivo se puede editar a mano).
+    pub fn sano(mut self) -> AjusteEspiral {
+        self.centro = self.centro.map(|(x, y)| (x.clamp(0.0, 1.0), y.clamp(0.0, 1.0)));
+        self.variacion = self.variacion.clamp(0.0, 1.2);
+        self.suavizado = self.suavizado.clamp(0.3, 12.0);
+        self.suavizado_densa = self.suavizado_densa.clamp(0.3, 12.0);
+        self.claro = self.claro.clamp(1.0, 30.0);
+        self.linea = self.linea.clamp(0.1, 2.0);
+        self.oscuro = self.oscuro.clamp(self.linea * 1.2, self.claro);
+        self.engorde = self.engorde.clamp(0.0, 2.0);
+        self
+    }
+}
+
+/// Promedio en caja que suaviza a `mm` (tres pasadas de una caja de lado ≈ mm).
+fn suavizar_a(v: Vec<f32>, w: usize, h: usize, g: f32, mm: f32) -> Vec<f32> {
+    let r = ((mm / g) / 2.0).round() as usize;
+    let mut v = v;
+    if r > 0 {
+        for _ in 0..3 {
+            v = caja(&v, w, h, r);
+        }
+    }
+    v
+}
+
+/// Distancia máxima del punto `c` a las esquinas del área.
+fn hasta_esquinas(ancho: f32, alto: f32, c: (f32, f32)) -> f32 {
+    [(0.0, 0.0), (ancho, 0.0), (0.0, alto), (ancho, alto)].iter().map(|&(x, y)| (x - c.0).hypot(y - c.1)).fold(0.0, f32::max)
+}
 /// En lo más oscuro la línea ocupa como mucho esta parte del hueco entre vueltas.
 const TINTA_MAX: f32 = 0.92;
 
 /// Espiral de Arquímedes deformada sobre un área de `ancho` × `alto` mm con separación media `periodo`.
 #[allow(clippy::too_many_arguments)]
-pub fn espiral(ancho: f32, alto: f32, periodo: f32, tono: Option<&Tono>, ajuste: Ajuste, op: Opciones, ctl: &Control) -> Option<Campo> {
+pub fn espiral(ancho: f32, alto: f32, periodo: f32, tono: Option<&Tono>, ajuste: Ajuste, op: Opciones, ae: &AjusteEspiral, ctl: &Control) -> Option<Campo> {
     let tono_en = |x: f32, y: f32| -> f32 {
         let t = tono.map_or(0.5, |t| if ajuste.niveles { t.nivelada(x, y) } else { t.muestra(x, y) });
         ajuste.aplicar(t)
     };
-    let (cx, cy) = (ancho / 2.0, alto / 2.0);
-    let r_max = cx.hypot(cy) + periodo;
+    let (cx, cy) = ae.centro.map_or((ancho / 2.0, alto / 2.0), |(u, v)| (u * ancho, v * alto));
+    let r_max = hasta_esquinas(ancho, alto, (cx, cy)) + periodo;
 
-    // Separación entre vueltas: del tono suavizado (≈ 1,5 periodos), para que cambie sin saltos.
-    let g = periodo / 2.0;
+    // Separación entre vueltas: del tono suavizado (`suavizado` mm), para que cambie sin saltos;
+    // de (1 + v/2)·p en blanco a (1 − v/2)·p en negro, nunca menos de lo que cabe.
+    let g = (ae.suavizado / 3.0).clamp(0.1, periodo / 2.0);
     let (gw, gh) = ((ancho / g).ceil() as usize + 1, (alto / g).ceil() as usize + 1);
-    let mut suave: Vec<f32> = (0..gw * gh).map(|k| tono_en((k % gw) as f32 * g, (k / gw) as f32 * g)).collect();
-    for _ in 0..3 {
-        suave = caja(&suave, gw, gh, 2);
-    }
+    let suave = suavizar_a((0..gw * gh).map(|k| tono_en((k % gw) as f32 * g, (k / gw) as f32 * g)).collect(), gw, gh, g, ae.suavizado);
     let muestra = |x: f32, y: f32| bilineal(&suave, gw, gh, x / g, y / g);
-    let sep = |x: f32, y: f32| periodo * (SEP_CLARO + (SEP_OSCURO - SEP_CLARO) * muestra(x, y));
+    let sep_min = (op.muro_min + op.canal_min).max(0.2 * periodo);
+    let sep = |x: f32, y: f32| (periodo * (1.0 + ae.variacion * (0.5 - muestra(x, y)))).max(sep_min);
 
     // La línea: radios r[i] en los ángulos i·2π/M (i sigue por las vueltas: i + M es la vuelta
     // siguiente en el mismo ángulo). La primera vuelta crece del centro; cada una se aparta de
@@ -67,7 +131,7 @@ pub fn espiral(ancho: f32, alto: f32, periodo: f32, tono: Option<&Tono>, ajuste:
         }
     }
     // Grosor: del tono fino (cambia a lo largo de la línea) y del hueco entre las dos vueltas de alrededor.
-    let paso = (SEP_OSCURO * periodo / 12.0).min(op.muro_min / 4.0).max(0.04);
+    let paso = (sep_min / 12.0).min(op.muro_min / 4.0).max(0.04);
     Some(campo(ancho, alto, (cx, cy), &r, m, paso, ctl, |x, y, hueco| {
         let medio = (tono_en(x, y) * TINTA_MAX * hueco / 2.0).max(op.muro_min / 2.0);
         let tope = ((hueco - op.canal_min) / 2.0).max(op.muro_min / 2.0).min(op.grosor_max / 2.0);
@@ -80,35 +144,34 @@ pub fn espiral(ancho: f32, alto: f32, periodo: f32, tono: Option<&Tono>, ajuste:
 /// El tono lo da la densidad de vueltas, así que la espiral sale irregular: se aprieta sobre ojos,
 /// cejas o boca y se abre en lo blanco. Termina cuando abarca el rostro (o toda el área sin rostro).
 #[allow(clippy::too_many_arguments)]
-pub fn espiral_densa(ancho: f32, alto: f32, periodo: f32, tono: Option<&Tono>, ajuste: Ajuste, op: Opciones, cara: Option<&Cara>, ctl: &Control) -> Option<Campo> {
+pub fn espiral_densa(ancho: f32, alto: f32, tono: Option<&Tono>, ajuste: Ajuste, op: Opciones, ae: &AjusteEspiral, cara: Option<&Cara>, ctl: &Control) -> Option<Campo> {
     let tono_en = |x: f32, y: f32| -> f32 {
         let t = tono.map_or(0.5, |t| if ajuste.niveles { t.nivelada(x, y) } else { t.muestra(x, y) });
         ajuste.aplicar(t)
     };
-    let (cx, cy) = cara.map_or((ancho / 2.0, alto / 2.0), |c| (c.centro.0.clamp(0.0, ancho), c.centro.1.clamp(0.0, alto)));
-    let r_max = [(0.0, 0.0), (ancho, 0.0), (0.0, alto), (ancho, alto)].iter().map(|&(x, y)| (x - cx).hypot(y - cy)).fold(0.0, f32::max) + periodo;
-    // Grosor fijo de la línea y separación entre vueltas: la densidad (1/sep) va con el tono, de
-    // `s_max` en blanco a `s_min` (la línea y un hueco algo menor que ella) en negro.
-    let w = op.muro_min.max(0.15).min(op.grosor_max);
-    let s_min = (1.7 * w).max(0.2 * periodo);
-    let s_max = std::env::var("DEDALO_ABIERTA").ok().and_then(|v| v.parse::<f32>().ok()).unwrap_or(2.5) * periodo;
+    let ae = ae.sano();
+    let auto = cara.map_or((ancho / 2.0, alto / 2.0), |c| (c.centro.0.clamp(0.0, ancho), c.centro.1.clamp(0.0, alto)));
+    let (cx, cy) = ae.centro.map_or(auto, |(u, v)| (u * ancho, v * alto));
+    // Grosor de la línea y separación entre vueltas: la densidad (1/sep) va con el tono, de
+    // `s_max` en blanco a `s_min` en negro.
+    let w = ae.linea.min(op.grosor_max);
+    let (s_min, s_max) = (ae.oscuro.max(1.2 * w), ae.claro.max(ae.oscuro.max(1.2 * w)));
+    let periodo = (0.5 * (s_min + s_max)).clamp(0.5, 12.0);
+    let r_max = hasta_esquinas(ancho, alto, (cx, cy)) + s_max;
 
-    // Tono algo suavizado (≈ medio periodo): las vueltas siguen los rasgos sin temblar.
-    let g = periodo / 4.0;
+    // Tono suavizado a `suavizado` mm: las vueltas siguen los rasgos sin temblar.
+    let g = (ae.suavizado_densa / 3.0).clamp(0.1, 2.0);
     let (gw, gh) = ((ancho / g).ceil() as usize + 1, (alto / g).ceil() as usize + 1);
-    let mut suave: Vec<f32> = (0..gw * gh).map(|k| tono_en((k % gw) as f32 * g, (k / gw) as f32 * g)).collect();
-    for _ in 0..2 {
-        suave = caja(&suave, gw, gh, 1);
-    }
+    let suave = suavizar_a((0..gw * gh).map(|k| tono_en((k % gw) as f32 * g, (k / gw) as f32 * g)).collect(), gw, gh, g, ae.suavizado_densa);
     let muestra = |x: f32, y: f32| bilineal(&suave, gw, gh, x / g, y / g);
     let sep = |x: f32, y: f32| {
         let t = muestra(x, y).clamp(0.0, 1.0);
         1.0 / (1.0 / s_max + (1.0 / s_min - 1.0 / s_max) * t)
     };
 
-    // Hasta dónde llegar en cada ángulo: el borde del área o, con rostro, una elipse que abarca
-    // cara, pelo y cuello.
-    let m = ((TAU * r_max / (0.05 * periodo)).ceil() as usize).clamp(1024, 16384);
+    // Hasta dónde llegar en cada ángulo: el borde del área o, con rostro (y «solo rostro»), hasta
+    // salir de una elipse que abarca cara, pelo y cuello (vale aunque el origen quede fuera de ella).
+    let m = ((TAU * r_max / (0.05 * periodo.max(s_min))).ceil() as usize).clamp(1024, 16384);
     let ang = |i: usize| (i % m) as f32 * TAU / m as f32;
     let punto = |r: f32, a: f32| (cx + r * a.cos(), cy + r * a.sin());
     let objetivo: Vec<f32> = (0..m)
@@ -116,12 +179,17 @@ pub fn espiral_densa(ancho: f32, alto: f32, periodo: f32, tono: Option<&Tono>, a
             let (c, s) = (ang(i).cos(), ang(i).sin());
             // Distancia al borde del área por el rayo.
             let borde = |d: f32, p: f32, lim: f32| if d > 1e-6 { (lim - p) / d } else if d < -1e-6 { -p / d } else { f32::MAX };
-            let al_borde = borde(c, cx, ancho).min(borde(s, cy, alto));
-            match cara {
+            let al_borde = borde(c, cx, ancho).min(borde(s, cy, alto)).max(0.0);
+            match cara.filter(|_| ae.solo_rostro) {
                 Some(f) => {
                     let (ax, ay) = (1.5 * f.semi.0, 1.35 * f.semi.1);
-                    let elipse = 1.0 / ((c / ax).powi(2) + (s / ay).powi(2)).sqrt();
-                    elipse.min(al_borde)
+                    // Rayo o + t·d contra la elipse: la salida más lejana (0 si no la toca).
+                    let (ox, oy) = ((cx - f.centro.0) / ax, (cy - f.centro.1) / ay);
+                    let (dx, dy) = (c / ax, s / ay);
+                    let (a, b, k) = (dx * dx + dy * dy, 2.0 * (ox * dx + oy * dy), ox * ox + oy * oy - 1.0);
+                    let disc = b * b - 4.0 * a * k;
+                    let salida = if disc > 0.0 { ((-b + disc.sqrt()) / (2.0 * a)).max(0.0) } else { 0.0 };
+                    salida.min(al_borde)
                 }
                 None => al_borde,
             }
@@ -154,7 +222,7 @@ pub fn espiral_densa(ancho: f32, alto: f32, periodo: f32, tono: Option<&Tono>, a
             break;
         }
     }
-    // Suavizado a lo largo de la línea (≈ medio periodo de arco), por tramos de una vuelta: curvas
+    // Suavizado a lo largo de la línea (≈ medio `suavizado` de arco), por tramos de una vuelta: curvas
     // sin dientes ni costura. Es lineal, así que entre dos vueltas queda la media de los huecos
     // (nunca menos de `s_min`); el tope de abajo solo corrige los cambios de ventana.
     let crudo = r.clone();
@@ -164,7 +232,7 @@ pub fn espiral_densa(ancho: f32, alto: f32, periodo: f32, tono: Option<&Tono>, a
     }
     for k in 1..r.len() / m {
         let r_med = crudo[k * m..(k + 1) * m].iter().sum::<f32>() / m as f32;
-        let ventana = ((0.5 * periodo / (r_med.max(periodo) * TAU / m as f32)) as usize).clamp(1, m / 16);
+        let ventana = ((ae.suavizado_densa / (r_med.max(s_min) * TAU / m as f32)) as usize).clamp(1, m / 16);
         for i in k * m..(k + 1) * m {
             let (a, b) = (i.saturating_sub(ventana), (i + ventana + 1).min(crudo.len()));
             r[i] = ((pre[b] - pre[a]) / (b - a) as f64) as f32;
@@ -173,9 +241,10 @@ pub fn espiral_densa(ancho: f32, alto: f32, periodo: f32, tono: Option<&Tono>, a
     }
     // Grosor: fijo, y algo más en lo oscuro (sin tapar el hueco entre vueltas).
     let paso = (s_min / 8.0).min(w / 3.0).max(0.04);
+    let engorde = ae.engorde;
     Some(campo(ancho, alto, (cx, cy), &r, m, paso, ctl, |x, y, hueco| {
         let t = tono_en(x, y).clamp(0.0, 1.0);
-        (w / 2.0 * (1.0 + 0.8 * t)).min(((hueco - 0.6 * w) / 2.0).max(w / 2.0)).min(op.grosor_max / 2.0)
+        (w / 2.0 * (1.0 + engorde * t)).min(((hueco - 0.6 * w) / 2.0).max(w / 2.0)).min(op.grosor_max / 2.0)
     }))
 }
 
@@ -271,7 +340,7 @@ mod tests {
     fn tinta_segun_el_tono() {
         let img = image::GrayImage::from_fn(200, 100, |x, _| image::Luma([if x < 100 { 230 } else { 30 }]));
         let tono = Tono::new(&img, 100.0, 50.0, 3.0);
-        let c = espiral(100.0, 50.0, 3.0, Some(&tono), Ajuste::default(), op(), &Control::default()).unwrap();
+        let c = espiral(100.0, 50.0, 3.0, Some(&tono), Ajuste::default(), op(), &AjusteEspiral::default(), &Control::default()).unwrap();
         let tinta = |x0: f32, x1: f32| {
             let mut n = (0, 0);
             for j in 0..c.h {
@@ -294,7 +363,7 @@ mod tests {
     fn densa_se_aprieta_en_lo_oscuro() {
         let img = image::GrayImage::from_fn(200, 100, |x, _| image::Luma([if x < 100 { 230 } else { 30 }]));
         let tono = Tono::new(&img, 100.0, 50.0, 3.0);
-        let c = espiral_densa(100.0, 50.0, 3.0, Some(&tono), Ajuste::default(), op(), None, &Control::default()).unwrap();
+        let c = espiral_densa(100.0, 50.0, Some(&tono), Ajuste::default(), op(), &AjusteEspiral::default(), None, &Control::default()).unwrap();
         let tinta = |x0: f32, x1: f32| {
             let mut n = (0, 0);
             for j in 0..c.h {
@@ -324,14 +393,16 @@ mod tests {
             let ancho = alto * img.width() as f32 / img.height() as f32;
             let tono = Tono::new(&crate::tono::gris(&img), ancho, alto, periodo);
             let t = std::time::Instant::now();
+            // DEDALO_ORIGEN="u,v": origen movido (fracción del área).
+            let mut ae = AjusteEspiral::default();
+            ae.centro = std::env::var("DEDALO_ORIGEN").ok().and_then(|v| v.split_once(',').and_then(|(a, b)| Some((a.parse().ok()?, b.parse().ok()?))));
+            let ae = &ae;
             // DEDALO_DENSA=1: la espiral densa (centrada en el rostro).
             let c = if std::env::var("DEDALO_DENSA").is_ok() {
                 let cara = crate::rostro::detectar(&img.to_rgb8()).map(|r| Cara::new(&r, ancho, alto));
-                let mut o = op();
-                o.muro_min = std::env::var("DEDALO_MURO").ok().and_then(|v| v.parse().ok()).unwrap_or(0.3);
-                espiral_densa(ancho, alto, periodo, Some(&tono), Ajuste::default(), o, cara.as_ref(), &Control::default()).unwrap()
+                espiral_densa(ancho, alto, Some(&tono), Ajuste::default(), op(), ae, cara.as_ref(), &Control::default()).unwrap()
             } else {
-                espiral(ancho, alto, periodo, Some(&tono), Ajuste::default(), op(), &Control::default()).unwrap()
+                espiral(ancho, alto, periodo, Some(&tono), Ajuste::default(), op(), ae, &Control::default()).unwrap()
             };
             println!("{}: {:?}", e.clave, t.elapsed());
             let u = Umbrales::new(&c);

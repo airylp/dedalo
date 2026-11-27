@@ -185,12 +185,41 @@ Deshacer correcciones	Undo corrections	Annuler les corrections
 Arrastra para corregir	Drag to adjust	Faites glisser pour corriger
 Restablecer esta sección	Reset this section	Réinitialiser cette section
 Ya tiene los valores de fábrica	Already at default values	Déjà aux valeurs par défaut
-Espiral (una sola línea, terminada)	Spiral (a single line, finished)	Spirale (une seule ligne, terminée)
 Grosor máximo	Maximum thickness	Épaisseur maximale
 Lo más gruesa que puede ser una línea, aunque la zona sea oscura: menos = líneas más finas	The thickest a line can be, even in dark areas: less = thinner lines	L’épaisseur maximale d’une ligne, même dans les zones sombres : moins = lignes plus fines
 sin límite	no limit	sans limite
 La espiral se imprime terminada: no hay nada que rellenar	The spiral is printed finished: nothing to fill in	La spirale s’imprime terminée : rien à remplir
 Girando la espiral…	Turning the spiral…	Tracé de la spirale…
-Espiral densa (se aprieta en lo oscuro)	Dense spiral (tightens in the dark)	Spirale dense (se resserre dans le sombre)
 La espiral sale de la cara y termina al abarcar cara, pelo y cuello (sin rostro, cubre toda el área)	The spiral starts at the face and ends once it covers face, hair and neck (without a face, it covers the whole area)	La spirale part du visage et s’arrête quand elle couvre visage, cheveux et cou (sans visage, elle couvre toute la zone)
 Centrar en el rostro	Center on the face	Centrer sur le visage
+Espiral	Spiral	Spirale
+Espiral densa	Dense spiral	Spirale dense
+Una sola línea desde el origen; en lo oscuro engorda y las vueltas se juntan. Se imprime terminada	A single line from the origin; in dark areas it thickens and the turns get closer. Printed finished	Une seule ligne depuis l’origine ; dans le sombre elle s’épaissit et les tours se rapprochent. S’imprime terminée
+Una sola línea fina: las vueltas se aprietan en lo oscuro y se abren mucho en lo claro. Se imprime terminada	A single thin line: turns tighten in dark areas and open wide in light ones. Printed finished	Une seule ligne fine : les tours se resserrent dans le sombre et s’écartent beaucoup dans le clair. S’imprime terminée
+Suavizado	Smoothing	Lissage
+A qué escala se mira la imagen: menos = las vueltas siguen detalles pequeños; más = curvas tranquilas	The scale at which the image is read: less = turns follow small details; more = calm curves	Échelle à laquelle l’image est lue : moins = les tours suivent les petits détails ; plus = courbes calmes
+Vueltas en lo claro	Turns in light areas	Tours dans le clair
+Distancia entre vueltas donde la imagen es blanca: más = líneas muy abiertas	Distance between turns where the image is white: more = very open lines	Distance entre les tours là où l’image est blanche : plus = lignes très espacées
+Vueltas en lo oscuro	Turns in dark areas	Tours dans le sombre
+Distancia entre vueltas en lo más negro: menos = negros más intensos y más vueltas	Distance between turns in the darkest areas: less = deeper blacks and more turns	Distance entre les tours dans le plus noir : moins = noirs plus intenses et plus de tours
+Grosor de la línea	Line thickness	Épaisseur du trait
+La línea en lo blanco (en lo oscuro engorda según «Engrosar»)	The line in white areas (in dark ones it thickens according to “Thicken”)	Le trait dans le blanc (dans le sombre il s’épaissit selon « Épaissir »)
+Engrosar en lo oscuro	Thicken in the dark	Épaissir dans le sombre
+Cuánto más gruesa es la línea en lo negro (0 % = siempre igual; 100 % = el doble)	How much thicker the line is in black (0 % = always the same; 100 % = double)	De combien le trait est plus épais dans le noir (0 % = toujours pareil ; 100 % = le double)
+Distancia media entre vueltas	Average distance between turns	Distance moyenne entre les tours
+Cambio con el tono	Change with tone	Variation avec le ton
+Cuánto se juntan las vueltas en lo oscuro y se separan en lo claro (0 % = espiral perfecta)	How much turns come together in dark areas and spread in light ones (0 % = perfect spiral)	À quel point les tours se rapprochent dans le sombre et s’écartent dans le clair (0 % = spirale parfaite)
+Línea más fina	Thinnest line	Trait le plus fin
+Grosor de la línea en lo blanco	Line thickness in white areas	Épaisseur du trait dans le blanc
+Blanco mínimo	Minimum white	Blanc minimal
+Lo menos que queda de blanco entre dos vueltas en lo negro	The least white left between two turns in black areas	Le minimum de blanc entre deux tours dans le noir
+Origen	Origin	Origine
+Dónde empieza la espiral: arrastra el punto sobre la hoja (doble clic en él = automático)	Where the spiral starts: drag the point on the sheet (double-click it = automatic)	Où commence la spirale : fais glisser le point sur la feuille (double clic dessus = automatique)
+Automático (la cara)	Automatic (the face)	Automatique (le visage)
+Automático (el centro)	Automatic (the center)	Automatique (le centre)
+Movido a mano	Moved by hand	Déplacée à la main
+Automático	Automatic	Automatique
+Parar al abarcar el rostro	Stop once the face is covered	S’arrêter une fois le visage couvert
+Origen de la espiral: arrastra para moverlo (doble clic = automático)	Spiral origin: drag to move it (double-click = automatic)	Origine de la spirale : fais-la glisser (double clic = automatique)
+Vueltas de {a} a {b} mm	Turns from {a} to {b} mm	Tours de {a} à {b} mm
+Arrastra el punto ⊕ sobre la hoja	Drag the ⊕ point on the sheet	Fais glisser le point ⊕ sur la feuille

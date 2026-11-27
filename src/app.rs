@@ -59,6 +59,8 @@ struct ClaveCampo {
     grosor_max: f32,
     /// Versión de los rasgos del rostro (0 = sin tratamiento de retrato).
     rostro: u64,
+    /// Solo espirales: sus ajustes propios.
+    espiral: Option<crate::espiral::AjusteEspiral>,
 }
 
 struct Patron {
@@ -334,8 +336,23 @@ impl App {
             muro_min: if imagen { self.p.muro_min } else { 0.0 },
             grosor_max: if imagen { self.p.grosor_max } else { 0.0 },
             fondo_vacio: flujo && self.p.fondo_vacio,
+            espiral: matches!(self.p.tipo, Tipo::Espiral | Tipo::EspiralDensa).then_some(self.p.espiral),
             rostro: if con_rostro { self.imagen.as_ref().filter(|i| i.rostro.is_some()).map_or(0, |i| i.rostro_ver) } else { 0 },
         }
+    }
+
+    /// Dónde empieza la espiral (mm en el área de dibujo): el elegido a mano, la cara (densa con
+    /// retrato) o el centro.
+    fn origen_espiral(&self, area: (f32, f32)) -> (f32, f32) {
+        if let Some((u, v)) = self.p.espiral.centro {
+            return (u * area.0, v * area.1);
+        }
+        let rostro = self.imagen.as_ref().and_then(|i| i.rostro.as_ref()).filter(|_| self.p.tipo == Tipo::EspiralDensa && self.p.retrato);
+        if let Some(r) = rostro {
+            let c = crate::rostro::Cara::new(r, area.0, area.1).centro;
+            return (c.0.clamp(0.0, area.0), c.1.clamp(0.0, area.1));
+        }
+        (area.0 / 2.0, area.1 / 2.0)
     }
 
     fn limites(&self) -> Limites {
@@ -406,12 +423,13 @@ impl App {
                 Tipo::Laberinto => crate::patron::laberinto(k.ancho, k.alto, k.periodo, k.semilla, &c),
                 Tipo::Espiral => {
                     let tono = gris.map(|g| Tono::new(&g, k.ancho, k.alto, k.periodo));
-                    crate::espiral::espiral(k.ancho, k.alto, k.periodo, tono.as_ref(), k.ajuste.unwrap_or_default(), opciones, &c)
+                    crate::espiral::espiral(k.ancho, k.alto, k.periodo, tono.as_ref(), k.ajuste.unwrap_or_default(), opciones, &k.espiral.unwrap_or_default(), &c)
                 }
                 Tipo::EspiralDensa => {
-                    let tono = gris.map(|g| Tono::new(&g, k.ancho, k.alto, k.periodo));
+                    // Tono fino: la espiral lo suaviza a su manera (`suavizado`).
+                    let tono = gris.map(|g| Tono::new(&g, k.ancho, k.alto, 1.0));
                     let cara = rostro.map(|r| crate::rostro::Cara::new(&r, k.ancho, k.alto));
-                    crate::espiral::espiral_densa(k.ancho, k.alto, k.periodo, tono.as_ref(), k.ajuste.unwrap_or_default(), opciones, cara.as_ref(), &c)
+                    crate::espiral::espiral_densa(k.ancho, k.alto, tono.as_ref(), k.ajuste.unwrap_or_default(), opciones, &k.espiral.unwrap_or_default(), cara.as_ref(), &c)
                 }
             };
             let r = campo.map(|campo| {
@@ -748,25 +766,93 @@ impl App {
                         ui.radio_value(&mut self.p.tipo, Tipo::Flujo, t!("Líneas de flujo"));
                         ui.radio_value(&mut self.p.tipo, Tipo::Reaccion, t!("Rayas (reacción-difusión)"));
                         ui.radio_value(&mut self.p.tipo, Tipo::Laberinto, t!("Laberinto con salida"));
-                        ui.radio_value(&mut self.p.tipo, Tipo::Espiral, t!("Espiral (una sola línea, terminada)"));
-                        ui.radio_value(&mut self.p.tipo, Tipo::EspiralDensa, t!("Espiral densa (se aprieta en lo oscuro)"));
+                        ui.radio_value(&mut self.p.tipo, Tipo::Espiral, t!("Espiral")).on_hover_text(t!("Una sola línea desde el origen; en lo oscuro engorda y las vueltas se juntan. Se imprime terminada"));
+                        ui.radio_value(&mut self.p.tipo, Tipo::EspiralDensa, t!("Espiral densa")).on_hover_text(t!("Una sola línea fina: las vueltas se aprietan en lo oscuro y se abren mucho en lo claro. Se imprime terminada"));
                     });
                 });
-                fila(ui, t!("Separación"), Some(t!("De un canal al siguiente: más pequeña = más detalle y más trabajo de relleno")), |ui| {
-                    let min = if matches!(self.p.tipo, Tipo::Flujo | Tipo::Espiral | Tipo::EspiralDensa) { 1.5 } else { 2.5 };
-                    ui.add(Slider::new(&mut self.p.periodo, min..=12.0).suffix(" mm").fixed_decimals(1));
-                });
-                fila(ui, t!("Muro mínimo"), Some(t!("Lo más fino que queda un muro en las zonas claras")), |ui| {
-                    ui.add(Slider::new(&mut self.p.muro_min, 0.1..=(self.p.periodo * 0.45)).suffix(" mm").fixed_decimals(2));
-                });
-                if self.p.tipo != Tipo::EspiralDensa {
-                    fila(ui, t!("Canal mínimo"), Some(t!("Lo más estrecho que queda un canal en las zonas oscuras")), |ui| {
-                        ui.add(Slider::new(&mut self.p.canal_min, 0.3..=(self.p.periodo * 0.8)).suffix(" mm").fixed_decimals(2));
-                    });
-                }
-                if matches!(self.p.tipo, Tipo::Flujo | Tipo::Espiral | Tipo::EspiralDensa) {
+                let grosor_max = |ui: &mut Ui, g: &mut f32| {
                     fila(ui, t!("Grosor máximo"), Some(t!("Lo más gruesa que puede ser una línea, aunque la zona sea oscura: menos = líneas más finas")), |ui| {
-                        ui.add(Slider::new(&mut self.p.grosor_max, 0.2..=store::GROSOR_SIN_LIMITE).fixed_decimals(1).custom_formatter(|v, _| if v as f32 >= store::GROSOR_SIN_LIMITE { t!("sin límite").to_string() } else { format!("{v:.1} mm") }).custom_parser(|t| t.trim().trim_end_matches("mm").trim().replace(',', ".").parse().ok()));
+                        ui.add(Slider::new(g, 0.2..=store::GROSOR_SIN_LIMITE).fixed_decimals(1).custom_formatter(|v, _| if v as f32 >= store::GROSOR_SIN_LIMITE { t!("sin límite").to_string() } else { format!("{v:.1} mm") }).custom_parser(|t| t.trim().trim_end_matches("mm").trim().replace(',', ".").parse().ok()));
+                    });
+                };
+                let suavizado = |ui: &mut Ui, v: &mut f32| {
+                    fila(ui, t!("Suavizado"), Some(t!("A qué escala se mira la imagen: menos = las vueltas siguen detalles pequeños; más = curvas tranquilas")), |ui| {
+                        ui.add(Slider::new(v, 0.3..=10.0).logarithmic(true).suffix(" mm").fixed_decimals(1));
+                    });
+                };
+                match self.p.tipo {
+                    Tipo::EspiralDensa => {
+                        let e = &mut self.p.espiral;
+                        fila(ui, t!("Vueltas en lo claro"), Some(t!("Distancia entre vueltas donde la imagen es blanca: más = líneas muy abiertas")), |ui| {
+                            ui.add(Slider::new(&mut e.claro, 2.0..=30.0).logarithmic(true).suffix(" mm").fixed_decimals(1));
+                        });
+                        fila(ui, t!("Vueltas en lo oscuro"), Some(t!("Distancia entre vueltas en lo más negro: menos = negros más intensos y más vueltas")), |ui| {
+                            let tope = e.claro.min(6.0);
+                            ui.add(Slider::new(&mut e.oscuro, 0.3..=tope).logarithmic(true).suffix(" mm").fixed_decimals(2));
+                        });
+                        fila(ui, t!("Grosor de la línea"), Some(t!("La línea en lo blanco (en lo oscuro engorda según «Engrosar»)")), |ui| {
+                            ui.add(Slider::new(&mut e.linea, 0.1..=1.5).suffix(" mm").fixed_decimals(2));
+                        });
+                        fila(ui, t!("Engrosar en lo oscuro"), Some(t!("Cuánto más gruesa es la línea en lo negro (0 % = siempre igual; 100 % = el doble)")), |ui| {
+                            let mut pct = (e.engorde * 100.0).round();
+                            if ui.add(Slider::new(&mut pct, 0.0..=200.0).suffix(" %").fixed_decimals(0)).changed() {
+                                e.engorde = pct / 100.0;
+                            }
+                        });
+                        suavizado(ui, &mut e.suavizado_densa);
+                    }
+                    Tipo::Espiral => {
+                        fila(ui, t!("Separación"), Some(t!("Distancia media entre vueltas")), |ui| {
+                            ui.add(Slider::new(&mut self.p.periodo, 1.5..=12.0).suffix(" mm").fixed_decimals(1));
+                        });
+                        let e = &mut self.p.espiral;
+                        fila(ui, t!("Cambio con el tono"), Some(t!("Cuánto se juntan las vueltas en lo oscuro y se separan en lo claro (0 % = espiral perfecta)")), |ui| {
+                            let mut pct = (e.variacion * 100.0).round();
+                            if ui.add(Slider::new(&mut pct, 0.0..=120.0).suffix(" %").fixed_decimals(0)).changed() {
+                                e.variacion = pct / 100.0;
+                            }
+                        });
+                        suavizado(ui, &mut e.suavizado);
+                        fila(ui, t!("Línea más fina"), Some(t!("Grosor de la línea en lo blanco")), |ui| {
+                            ui.add(Slider::new(&mut self.p.muro_min, 0.1..=(self.p.periodo * 0.45)).suffix(" mm").fixed_decimals(2));
+                        });
+                        fila(ui, t!("Blanco mínimo"), Some(t!("Lo menos que queda de blanco entre dos vueltas en lo negro")), |ui| {
+                            ui.add(Slider::new(&mut self.p.canal_min, 0.1..=(self.p.periodo * 0.8)).suffix(" mm").fixed_decimals(2));
+                        });
+                        grosor_max(ui, &mut self.p.grosor_max);
+                    }
+                    _ => {
+                        fila(ui, t!("Separación"), Some(t!("De un canal al siguiente: más pequeña = más detalle y más trabajo de relleno")), |ui| {
+                            let min = if self.p.tipo == Tipo::Flujo { 1.5 } else { 2.5 };
+                            ui.add(Slider::new(&mut self.p.periodo, min..=12.0).suffix(" mm").fixed_decimals(1));
+                        });
+                        fila(ui, t!("Muro mínimo"), Some(t!("Lo más fino que queda un muro en las zonas claras")), |ui| {
+                            ui.add(Slider::new(&mut self.p.muro_min, 0.1..=(self.p.periodo * 0.45)).suffix(" mm").fixed_decimals(2));
+                        });
+                        fila(ui, t!("Canal mínimo"), Some(t!("Lo más estrecho que queda un canal en las zonas oscuras")), |ui| {
+                            ui.add(Slider::new(&mut self.p.canal_min, 0.3..=(self.p.periodo * 0.8)).suffix(" mm").fixed_decimals(2));
+                        });
+                        if self.p.tipo == Tipo::Flujo {
+                            grosor_max(ui, &mut self.p.grosor_max);
+                        }
+                    }
+                }
+                if matches!(self.p.tipo, Tipo::Espiral | Tipo::EspiralDensa) {
+                    let movido = self.p.espiral.centro.is_some();
+                    fila_bloque(ui, t!("Origen"), Some(t!("Dónde empieza la espiral: arrastra el punto sobre la hoja (doble clic en él = automático)")), |ui| {
+                        ui.vertical(|ui| {
+                            if movido {
+                                ui.horizontal(|ui| {
+                                    ui.label(t!("Movido a mano"));
+                                    if ui.small_button(t!("Automático")).clicked() {
+                                        self.p.espiral.centro = None;
+                                    }
+                                });
+                            } else {
+                                ui.label(if self.p.tipo == Tipo::EspiralDensa && self.p.retrato { t!("Automático (la cara)") } else { t!("Automático (el centro)") });
+                            }
+                            ui.label(RichText::new(t!("Arrastra el punto ⊕ sobre la hoja")).small().weak());
+                        });
                     });
                 }
                 if !matches!(self.p.tipo, Tipo::Espiral | Tipo::EspiralDensa) {
@@ -803,6 +889,9 @@ impl App {
                     fila_bloque(ui, t!("Retrato"), Some(ayuda), |ui| {
                         ui.vertical(|ui| {
                             ui.checkbox(&mut self.p.retrato, if flujo { t!("Ojos, cejas, nariz, boca y pelo") } else { t!("Centrar en el rostro") });
+                            if !flujo {
+                                ui.add_enabled(self.p.retrato, egui::Checkbox::new(&mut self.p.espiral.solo_rostro, t!("Parar al abarcar el rostro")));
+                            }
                             if let (true, Some(e)) = (self.p.retrato, estado) {
                                 ui.label(RichText::new(e).small().weak());
                             }
@@ -1046,6 +1135,28 @@ impl App {
                 ctx.request_repaint_after(Duration::from_millis(100));
             }
         }
+        // Origen de la espiral: un punto que se arrastra (doble clic = automático).
+        if matches!(self.p.tipo, Tipo::Espiral | Tipo::EspiralDensa) && self.trabajo.is_none() {
+            let o = self.origen_espiral(area_mm);
+            let c = a_px(o.0, o.1);
+            let resp = ui.interact(Rect::from_center_size(c, vec2(24.0, 24.0)), egui::Id::NULL.with("dedalo_origen"), Sense::click_and_drag());
+            let mut c = c;
+            if resp.dragged() {
+                c += resp.drag_delta();
+                let (u, v) = ((c.x - area.min.x) / area.width(), (c.y - area.min.y) / area.height());
+                self.p.espiral.centro = Some((u.clamp(0.0, 1.0), v.clamp(0.0, 1.0)));
+            }
+            if resp.double_clicked() {
+                self.p.espiral.centro = None;
+            }
+            let activo = resp.hovered() || resp.dragged();
+            let acento = crate::estilo::acento();
+            let r = if activo { 9.0 } else { 7.0 };
+            painter.circle(c, r, Color32::WHITE.gamma_multiply(0.9), Stroke::new(2.0, acento));
+            painter.line_segment([c - vec2(r + 4.0, 0.0), c + vec2(r + 4.0, 0.0)], Stroke::new(1.5, acento));
+            painter.line_segment([c - vec2(0.0, r + 4.0), c + vec2(0.0, r + 4.0)], Stroke::new(1.5, acento));
+            resp.on_hover_cursor(egui::CursorIcon::Grab).on_hover_text(t!("Origen de la espiral: arrastra para moverlo (doble clic = automático)"));
+        }
         // Medidas.
         let txt = tf!("{w} × {h} mm", w = format!("{:.0}", area_mm.0), h = format!("{:.0}", area_mm.1));
         painter.text(area.left_bottom() + vec2(0.0, 4.0), Align2::LEFT_TOP, txt, egui::FontId::proportional(11.0), Color32::from_gray(150));
@@ -1065,7 +1176,12 @@ impl App {
         crate::estilo::barra_estado(ui, &mut self.show_keys, &mut self.show_about, |ui| {
             ui.label(RichText::new(if apaisada { t!("Carta horizontal") } else { t!("Carta vertical") }).small());
             ui.separator();
-            ui.label(RichText::new(tf!("Separación {s} mm", s = format!("{periodo:.1}"))).small());
+            if self.p.tipo == Tipo::EspiralDensa {
+                let e = self.p.espiral;
+                ui.label(RichText::new(tf!("Vueltas de {a} a {b} mm", a = format!("{:.1}", e.oscuro), b = format!("{:.1}", e.claro))).small());
+            } else {
+                ui.label(RichText::new(tf!("Separación {s} mm", s = format!("{periodo:.1}"))).small());
+            }
             if let Some(c) = celdas {
                 ui.separator();
                 ui.label(RichText::new(tf!("{n} celdas", n = format!("{c:.0}"))).small());

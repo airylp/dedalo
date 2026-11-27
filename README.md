@@ -37,6 +37,9 @@ vez rellenado con pluma, aparece la imagen.
      acerca a la anterior en lo oscuro y se aleja en lo claro. El tono sale de lo apretado de las
      vueltas, así que la espiral queda irregular: se amontona en ojos, cejas o boca y se abre mucho
      en lo blanco. Con un rostro, sale de la cara y termina cuando abarca cara, pelo y cuello.
+   - En las dos espirales el **origen** (donde empiezan) se arrastra con el ratón sobre la hoja
+     (doble clic en él = automático). Cada una tiene sus controles: separación en lo claro y en lo
+     oscuro, cuánto cambia con el tono, suavizado y grosor de la línea.
 3. **Separación:** la distancia de un canal al siguiente. **Muro mínimo** y **canal mínimo**
    garantizan que siempre quede un trazo visible y sitio para la pluma.
 4. **Hoja:** carta completa (horizontal si la imagen es apaisada) o un cuadro de N cm centrado, con
