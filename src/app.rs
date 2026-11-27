@@ -189,6 +189,9 @@ impl App {
             Ok("relleno") => p.impresion = Impresion::Relleno,
             _ => {}
         }
+        if let Some(v) = std::env::var("DEDALO_SEPARACION").ok().and_then(|v| v.parse().ok()) {
+            p.periodo = v;
+        }
         if std::env::var_os("DEDALO_FONDO_VACIO").is_some() {
             p.fondo_vacio = true;
         }
@@ -515,7 +518,7 @@ impl App {
         std::thread::spawn(move || {
             let tono = tono.or_else(|| gris.map(|g| Arc::new(Tono::new(&g, campo.ancho, campo.alto, periodo))));
             let d = Dibujo { campo: &campo, umbrales: &umbrales, tono: tono.as_deref(), ajuste, limites };
-            let figuras = d.contornos(0.03);
+            let figuras = d.contornos(0.06);
             let origen = pag.origen(campo.ancho, campo.alto);
             let datos = if pdf { crate::salida::pdf(&pag, origen, &figuras, trazo, &titulo) } else { crate::salida::svg(&pag, origen, &figuras, trazo).into_bytes() };
             let r = store::write_atomic(&path, &datos).map(|_| path).map_err(|e| e.to_string());

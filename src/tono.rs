@@ -63,8 +63,11 @@ impl Tono {
         let w = ((ancho / paso).round() as u32).clamp(2, 4000);
         let h = ((alto / paso).round() as u32).clamp(2, 4000);
         let r = image::imageops::resize(img, w, h, image::imageops::FilterType::Triangle);
-        let r = image::imageops::blur(&r, 1.0);
-        let v = r.pixels().map(|p| 1.0 - srgb_a_lineal(p.0[0] as f32 / 255.0)).collect();
+        // ≈ medio periodo: sin escalones bruscos de grosor donde la imagen cambia de golpe.
+        let r = image::imageops::blur(&r, 1.8);
+        // Oscuridad perceptual (el valor del archivo): con trazos tan gruesos, la
+        // luz lineal oscurecía demasiado los tonos medios y la imagen no se leía.
+        let v = r.pixels().map(|p| 1.0 - p.0[0] as f32 / 255.0).collect();
         let v: Vec<f32> = v;
         let mut orden = v.clone();
         orden.sort_by(f32::total_cmp);
@@ -96,6 +99,7 @@ impl Tono {
 
 /// La tinta cubre superficie: para que de lejos el gris se vea igual, se
 /// trabaja con la luz real (lineal), no con el valor del archivo (sRGB).
+#[allow(dead_code)]
 fn srgb_a_lineal(c: f32) -> f32 {
     if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
 }
@@ -124,7 +128,7 @@ mod tests {
         let t = Tono::new(&img, 100.0, 10.0, 4.0);
         assert!(t.muestra(2.0, 5.0) < 0.1);
         assert!(t.muestra(98.0, 5.0) > 0.9);
-        assert!(t.muestra(50.0, 5.0) > 0.6, "gris medio en lineal ≈ 0.78 de oscuridad");
+        assert!((t.muestra(50.0, 5.0) - 0.5).abs() < 0.1, "gris medio ≈ 0.5 de oscuridad");
     }
 
     #[test]

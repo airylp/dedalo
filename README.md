@@ -11,10 +11,10 @@ vez rellenado con pluma, aparece la imagen.
 1. **Abre una imagen** (PNG, JPEG, GIF, WebP o BMP), o arrástrala a la ventana. Brillo, contraste,
    niveles automáticos y negativo ajustan cómo se lee.
 2. **Elige el patrón:**
-   - **Líneas de flujo:** líneas que avanzan con curvas suaves sin cruzarse nunca. En lo oscuro se
-     juntan y engordan; en lo claro se separan un poco y quedan finas (nunca huecos vacíos). Se colocan con el método de Jobard y
-     Lefer (1997), con la separación según el tono. Su dirección mezcla ruido suave con la tangente
-     de los bordes de la imagen («Siguen la imagen», de 0 a 100 %), así rodean las formas. Con
+   - **Líneas de flujo:** líneas que avanzan con curvas suaves sin cruzarse nunca, como un grabado. En lo
+     oscuro engordan hasta dejar solo el canal mínimo; en lo claro quedan finas (nunca huecos vacíos). Se
+     colocan con el método de Jobard y Lefer (1997). Corren casi paralelas y se curvan siguiendo los bordes
+     de la imagen (tensor de estructura a dos escalas; «Siguen la imagen», de 0 a 100 %). Con
      **Zonas**, cada banda de tono se rellena con sus propias líneas en otra dirección. Con **Fondo liso**,
      las zonas claras de un solo tono (por ejemplo, un fondo blanco) quedan sin líneas. Las líneas
      nunca se acercan más que un canal mínimo y dos muros mínimos, así siempre cabe la pluma.
@@ -48,6 +48,12 @@ Detalle de los PDF (líneas de flujo a 400 ppp y laberinto a 300 ppp):
 ![Detalle del PDF con líneas de flujo](docs/dedalo-flujo-pdf.png)
 
 ![Detalle del PDF del laberinto](docs/dedalo-pdf-detalle.png)
+
+Retratos de dominio público (Wikimedia Commons) en hoja carta con 2,5 mm de separación:
+
+![Lincoln con líneas de flujo](docs/dedalo-retrato-lincoln.png)
+
+![Marie Curie con líneas de flujo](docs/dedalo-retrato-curie.png)
 
 Rayas de reacción-difusión:
 

@@ -81,8 +81,11 @@ pub fn pdf(pag: &Pagina, origen: (f32, f32), figuras: &[Vec<(f32, f32)>], trazo:
         _ => trazo.gris,
     });
     for f in figuras {
-        for (k, (x, y)) in f.iter().enumerate() {
-            c += &format!("{x:.2} {y:.2} {}\n", if k == 0 { "m" } else { "l" });
+        let Some(&(x0, y0)) = f.first() else { continue };
+        c += &format!("{x0:.3} {y0:.3} m\n");
+        // Curvas que pasan por los puntos: trazo liso con pocos vértices.
+        for (a, b, p) in crate::contorno::curvas(f) {
+            c += &format!("{:.3} {:.3} {:.3} {:.3} {:.3} {:.3} c\n", a.0, a.1, b.0, b.1, p.0, p.1);
         }
         c += "h\n";
     }
@@ -132,8 +135,11 @@ fn escapar_pdf(s: &str) -> String {
 pub fn svg(pag: &Pagina, origen: (f32, f32), figuras: &[Vec<(f32, f32)>], trazo: Trazo) -> String {
     let mut d = String::new();
     for f in figuras {
-        for (k, (x, y)) in f.iter().enumerate() {
-            d += &format!("{}{:.2} {:.2}", if k == 0 { "M" } else { "L" }, x + origen.0, y + origen.1);
+        let Some(&(x0, y0)) = f.first() else { continue };
+        d += &format!("M{:.3} {:.3}", x0 + origen.0, y0 + origen.1);
+        let (ox, oy) = origen;
+        for (a, b, p) in crate::contorno::curvas(f) {
+            d += &format!("C{:.3} {:.3} {:.3} {:.3} {:.3} {:.3}", a.0 + ox, a.1 + oy, b.0 + ox, b.1 + oy, p.0 + ox, p.1 + oy);
         }
         d += "Z";
     }

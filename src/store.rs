@@ -55,22 +55,22 @@ pub struct Parametros {
     #[serde(rename = "tono", default)]
     pub ajuste: Ajuste,
     /// Líneas de flujo: bandas de tono, cada una con sus líneas (1 = sin zonas).
-    #[serde(rename = "zonas", default = "tres")]
+    #[serde(rename = "zonas", default = "una")]
     pub zonas: u32,
     /// Líneas de flujo: cuánto siguen los bordes de la imagen (0–1).
-    #[serde(rename = "siguen_la_imagen", default = "seis_decimos")]
+    #[serde(rename = "siguen_la_imagen", default = "medio")]
     pub sigue: f32,
     /// Líneas de flujo: sin líneas en el fondo liso y claro.
     #[serde(rename = "fondo_vacio", default)]
     pub fondo_vacio: bool,
 }
 
-fn tres() -> u32 {
-    3
+fn una() -> u32 {
+    1
 }
 
-fn seis_decimos() -> f32 {
-    0.6
+fn medio() -> f32 {
+    0.5
 }
 
 impl Default for Parametros {
@@ -88,8 +88,8 @@ impl Default for Parametros {
             linea: 0.2,
             gris: 0.85,
             ajuste: Ajuste::default(),
-            zonas: 3,
-            sigue: 0.6,
+            zonas: 1,
+            sigue: 0.5,
             fondo_vacio: false,
         }
     }

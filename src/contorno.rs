@@ -137,7 +137,9 @@ impl Dibujo<'_> {
                         if c.recortar { (x.clamp(0.0, c.ancho), y.clamp(0.0, c.alto)) } else { (x, y) }
                     })
                     .collect();
-                simplificar(&pts, tolerancia)
+                // Suavizado ligero (quita el escalón de la rejilla) y luego pocos puntos:
+                // la salida los une con curvas (`curvas`).
+                simplificar(&suavizar_cerrado(&pts, 2), tolerancia)
             })
             .filter(|l| l.len() >= 3)
             .collect()
@@ -232,6 +234,37 @@ pub fn marching_squares(w: usize, h: usize, g: &[f32]) -> Vec<Vec<(f32, f32)>> {
         }
     }
     out
+}
+
+/// Media móvil [¼ ½ ¼] de un polígono cerrado (`pasadas` veces).
+pub fn suavizar_cerrado(p: &[(f32, f32)], pasadas: usize) -> Vec<(f32, f32)> {
+    let n = p.len();
+    if n < 5 {
+        return p.to_vec();
+    }
+    let mut a = p.to_vec();
+    for _ in 0..pasadas {
+        let b = a.clone();
+        for i in 0..n {
+            let (u, v, w) = (b[(i + n - 1) % n], b[i], b[(i + 1) % n]);
+            a[i] = (0.25 * u.0 + 0.5 * v.0 + 0.25 * w.0, 0.25 * u.1 + 0.5 * v.1 + 0.25 * w.1);
+        }
+    }
+    a
+}
+
+/// Curvas Bézier cúbicas (Catmull-Rom) que pasan por los puntos de un polígono
+/// cerrado: para cada tramo, (control 1, control 2, punto final).
+pub fn curvas(p: &[(f32, f32)]) -> Vec<((f32, f32), (f32, f32), (f32, f32))> {
+    let n = p.len();
+    (0..n)
+        .map(|i| {
+            let (a, b, c, d) = (p[(i + n - 1) % n], p[i], p[(i + 1) % n], p[(i + 2) % n]);
+            let c1 = (b.0 + (c.0 - a.0) / 6.0, b.1 + (c.1 - a.1) / 6.0);
+            let c2 = (c.0 - (d.0 - b.0) / 6.0, c.1 - (d.1 - b.1) / 6.0);
+            (c1, c2, c)
+        })
+        .collect()
 }
 
 /// Ramer–Douglas–Peucker para un polígono cerrado.
