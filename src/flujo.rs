@@ -406,7 +406,9 @@ pub fn flujo(ancho: f32, alto: f32, periodo: f32, semilla: u64, tono: Option<&To
     }
 
     // ---- Campo: distancia a la línea más cercana / separación local.
-    let paso = s_min / 12.0;
+    // Rejilla fina (independiente de la separación): las líneas más finas (muro
+    // mínimo) deben medir varias muestras.
+    let paso = (0.55 * periodo / 12.0).min(op.muro_min / 4.0).max(0.04);
     let salto_campo = (2.0 * s_max / paso_l).ceil() as i32;
     let mut seg = Espacio::new(ancho, alto, s_max);
     for (id, l) in lineas.iter().enumerate() {
@@ -463,9 +465,9 @@ pub fn flujo(ancho: f32, alto: f32, periodo: f32, semilla: u64, tono: Option<&To
         let n = hechas.fetch_add(1, Ordering::Relaxed);
         ctl.avance.store((800 + n * 200 / ch) as u32, Ordering::Relaxed);
     });
-    // Suavizado [1 2 1] (dos pasadas): redondea los quiebros donde el grosor
+    // Suavizado [1 2 1] (una pasada): redondea los quiebros donde el grosor
     // permitido cambia de golpe (p. ej. donde empieza o acaba una línea vecina).
-    for _ in 0..2 {
+    for _ in 0..1 {
         let t = v.clone();
         for j in 0..ch {
             for i in 0..cw {
