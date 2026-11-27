@@ -5,6 +5,7 @@
 mod i18n;
 mod app;
 mod contorno;
+mod ejemplos;
 mod estilo;
 mod flujo;
 mod icon;

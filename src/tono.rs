@@ -106,8 +106,13 @@ fn srgb_a_lineal(c: f32) -> f32 {
 
 /// Abre una imagen (PNG, JPEG, GIF, WebP, BMP) en escala de grises. Lo
 /// transparente cuenta como blanco.
+#[cfg(test)]
 pub fn abrir(path: &std::path::Path) -> Result<GrayImage, String> {
-    let img = image::open(path).map_err(|e| e.to_string())?;
+    Ok(gris(&image::open(path).map_err(|e| e.to_string())?))
+}
+
+/// Imagen → gris (luminancia; lo transparente cuenta como blanco).
+pub fn gris(img: &image::DynamicImage) -> GrayImage {
     let rgba = img.to_rgba8();
     let mut g = GrayImage::new(rgba.width(), rgba.height());
     for (p, q) in rgba.pixels().zip(g.pixels_mut()) {
@@ -115,7 +120,7 @@ pub fn abrir(path: &std::path::Path) -> Result<GrayImage, String> {
         let l = 0.2126 * p.0[0] as f32 + 0.7152 * p.0[1] as f32 + 0.0722 * p.0[2] as f32;
         q.0[0] = (l * a + 255.0 * (1.0 - a)).round() as u8;
     }
-    Ok(g)
+    g
 }
 
 #[cfg(test)]

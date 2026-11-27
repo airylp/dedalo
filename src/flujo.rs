@@ -273,11 +273,16 @@ pub fn flujo(ancho: f32, alto: f32, periodo: f32, semilla: u64, tono: Option<&To
         }
         (a, b, c)
     };
-    let (fx, fxy, fy) = tensor(2);
-    let (gx_, gxy, gy_) = tensor(8);
+    // Escalas: del detalle (ojos, boca) a la forma grande (cabeza, hombros). Donde
+    // la imagen es lisa mandan las escalas grandes: las líneas rodean la forma más
+    // cercana como curvas de nivel, en vez de cruzar en diagonal.
+    let escalas: Vec<(f32, (Rejilla, Rejilla, Rejilla))> = escalas_tensor().into_iter().map(|(r, p)| (p, tensor(r))).collect();
     let mut cx = vec![0.0f32; w * h];
     let mut cy = vec![0.0f32; w * h];
     let base_ang = 0.55f32;
+    // Ondulación de espagueti: la dirección gira un poco con un ruido de escala media.
+    let ondas = Ruido::new(semilla ^ 0x5A, 7.0 * periodo, ancho, alto);
+    let amplitud = 0.35 * (1.0 - 0.5 * op.sigue);
     for j in 0..h {
         for i in 0..w {
             let k = j * w + i;
@@ -287,13 +292,16 @@ pub fn flujo(ancho: f32, alto: f32, periodo: f32, semilla: u64, tono: Option<&To
             // «gradiente» perpendicular a ese ángulo.
             let a = base_ang + 0.45 * ruido.angulo(x, y).sin() + zona * 0.6;
             let (na, nb) = (-(a.sin()), a.cos());
-            let peso_base = 0.08 + 0.6 * (1.0 - op.sigue);
-            let txx = op.sigue * (fx.v[k] + 0.6 * gx_.v[k]) + peso_base * na * na;
-            let txy = op.sigue * (fxy.v[k] + 0.6 * gxy.v[k]) + peso_base * na * nb;
-            let tyy = op.sigue * (fy.v[k] + 0.6 * gy_.v[k]) + peso_base * nb * nb;
+            let peso_base = 0.02 + 0.5 * (1.0 - op.sigue).powi(2);
+            let (mut txx, mut txy, mut tyy) = (peso_base * na * na, peso_base * na * nb, peso_base * nb * nb);
+            for (p, (a, b, c)) in &escalas {
+                txx += op.sigue.max(0.05) * p * a.v[k];
+                txy += op.sigue.max(0.05) * p * b.v[k];
+                tyy += op.sigue.max(0.05) * p * c.v[k];
+            }
             // Dirección del gradiente dominante; las líneas van a 90° de él.
             let a_grad = 0.5 * (2.0 * txy).atan2(txx - tyy);
-            let a_linea = a_grad + std::f32::consts::FRAC_PI_2;
+            let a_linea = a_grad + std::f32::consts::FRAC_PI_2 + amplitud * ondas.angulo(x, y).sin();
             cx[k] = (2.0 * a_linea).cos();
             cy[k] = (2.0 * a_linea).sin();
         }
@@ -310,6 +318,8 @@ pub fn flujo(ancho: f32, alto: f32, periodo: f32, semilla: u64, tono: Option<&To
 
     // ---- Jobard–Lefer
     let paso_l = 0.1 * periodo;
+    // Una línea se detiene al acercarse a otra a esta fracción de la separación: baja = líneas largas (espagueti).
+    let prueba: f32 = std::env::var("DEDALO_PRUEBA").ok().and_then(|v| v.parse().ok()).unwrap_or(0.35);
     // Dos líneas nunca se acercan más de lo que cabe: un canal y dos medios muros… y algo de holgura.
     let cabe = 1.15 * (op.canal_min + op.muro_min);
     let mut espacio = Espacio::new(ancho, alto, s_max);
@@ -370,7 +380,7 @@ pub fn flujo(ancho: f32, alto: f32, periodo: f32, semilla: u64, tono: Option<&To
                     break;
                 }
                 let idx = if lado == 0 { n as i32 } else { -(n as i32) };
-                if espacio.ocupado(nx, ny, (0.6 * sep(nx, ny)).max(cabe), id, idx, salto) {
+                if espacio.ocupado(nx, ny, (prueba * sep(nx, ny)).max(cabe), id, idx, salto) {
                     break;
                 }
                 espacio.poner(Punto { x: nx, y: ny, linea: id, idx });
@@ -486,6 +496,15 @@ pub fn flujo(ancho: f32, alto: f32, periodo: f32, semilla: u64, tono: Option<&To
         }
     }
     Some(Campo { w: cw, h: ch, v, paso, x0: 0.0, y0: 0.0, ancho, alto, solucion: vec![], recortar: true, fijo: true })
+}
+
+/// (radio de suavizado en celdas de medio periodo, peso) de cada escala del tensor.
+/// Pruebas: DEDALO_ESCALAS="r:p,r:p,…".
+fn escalas_tensor() -> Vec<(usize, f32)> {
+    std::env::var("DEDALO_ESCALAS")
+        .ok()
+        .map(|v| v.split(',').filter_map(|e| e.split_once(':').and_then(|(r, p)| Some((r.parse().ok()?, p.parse().ok()?)))).collect())
+        .unwrap_or_else(|| vec![(1, 1.0), (3, 0.8), (8, 0.6), (20, 0.5)])
 }
 
 /// Media móvil [¼ ½ ¼] (`pasadas` veces) sin mover los extremos.

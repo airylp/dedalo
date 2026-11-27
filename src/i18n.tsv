@@ -79,7 +79,7 @@ no se pudo iniciar: {e}	could not start: {e}	impossible de démarrer : {e}
 respuesta inesperada de GitHub	unexpected response from GitHub	réponse inattendue de GitHub
 terminó sin instalar la app	finished without installing the app	terminé sans installer l'app
 {v} (compilación local)	{v} (local build)	{v} (compilation locale)
-Abre una imagen (o arrástrala aquí). Sin imagen se dibuja un gris parejo.	Open an image (or drag it here). Without one, an even grey is drawn.	Ouvrez une image (ou glissez-la ici). Sans image, un gris uniforme est dessiné.
+Abre una imagen (o arrástrala aquí) o elige uno de los Ejemplos. Sin imagen se dibuja un gris parejo.	Open an image (or drag it here) or pick one of the Examples. Without one, an even grey is drawn.	Ouvrez une image (ou glissez-la ici) ou choisissez un des Exemples. Sans image, un gris uniforme est dessiné.
 Abrir imagen	Open image	Ouvrir une image
 Abrir imagen…	Open image…	Ouvrir une image…
 Abrir una imagen	Open an image	Ouvrir une image
@@ -172,3 +172,6 @@ Ver detalle	Show details	Voir le détail
 Copiar detalle	Copy details	Copier le détail
 Copia el registro para pegarlo en un reporte	Copies the log to paste into a report	Copie le journal pour le coller dans un rapport
 Sin registro.	No log.	Aucun journal.
+Ejemplos	Examples	Exemples
+Retratos incluidos para probar	Built-in portraits to try	Portraits inclus pour essayer
+ejemplo	example	exemple

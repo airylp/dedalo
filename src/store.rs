@@ -125,6 +125,9 @@ pub struct Session {
     /// Última imagen abierta (se vuelve a abrir al arrancar si sigue ahí).
     #[serde(rename = "imagen", default, skip_serializing_if = "Option::is_none")]
     pub image: Option<PathBuf>,
+    /// O el retrato de ejemplo abierto (`ejemplos::EJEMPLOS`).
+    #[serde(rename = "ejemplo", default, skip_serializing_if = "Option::is_none")]
+    pub sample: Option<String>,
     /// Carpeta donde se guardó el último PDF/SVG.
     #[serde(rename = "carpeta_salida", default, skip_serializing_if = "Option::is_none")]
     pub out_dir: Option<PathBuf>,

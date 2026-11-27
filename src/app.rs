@@ -22,7 +22,10 @@ use std::time::{Duration, Instant};
 
 /// Imagen abierta.
 struct Imagen {
+    /// Para un ejemplo, solo el nombre de archivo (sin carpeta).
     path: PathBuf,
+    /// Nombre del retrato de ejemplo.
+    ejemplo: Option<&'static str>,
     gris: Arc<GrayImage>,
     /// Ancho / alto.
     aspecto: f32,
@@ -232,32 +235,48 @@ impl App {
             capturado: false,
         };
         let inicial = open.or_else(|| std::env::var_os("DEDALO_IMAGEN").map(PathBuf::from)).or_else(|| app.session.image.clone().filter(|p| p.is_file()));
+        let ejemplo = std::env::var("DEDALO_EJEMPLO").ok().or_else(|| app.session.sample.clone()).and_then(|c| crate::ejemplos::buscar(&c));
         if let Some(path) = inicial {
             app.abrir(&cc.egui_ctx, &path);
+        } else if let Some(e) = ejemplo {
+            app.abrir_ejemplo(&cc.egui_ctx, e);
         }
         app
     }
 
     fn abrir(&mut self, ctx: &Context, path: &Path) {
-        match crate::tono::abrir(path) {
-            Ok(gris) => {
-                let aspecto = gris.width() as f32 / gris.height().max(1) as f32;
-                // Miniatura en color para «Ver la imagen».
-                let color = image::open(path).map(|i| i.thumbnail(1400, 1400).to_rgba8()).unwrap_or_default();
-                let tex = ctx.load_texture(
-                    "imagen",
-                    ColorImage::from_rgba_unmultiplied([color.width() as usize, color.height() as usize], color.as_raw()),
-                    TextureOptions::LINEAR,
-                );
-                self.imagen = Some(Imagen { path: path.to_path_buf(), gris: Arc::new(gris), aspecto, textura: tex });
-                self.tono = None;
+        match image::open(path) {
+            Ok(img) => {
+                self.poner_imagen(ctx, &img, path.to_path_buf(), None);
                 if self.screenshot.is_none() {
                     self.session.image = Some(path.to_path_buf());
+                    self.session.sample = None;
                     self.session_dirty = true;
                 }
             }
             Err(e) => self.avisos.error(tf!("No se pudo abrir la imagen: {e}", e = e)),
         }
+    }
+
+    /// Uno de los retratos incluidos.
+    fn abrir_ejemplo(&mut self, ctx: &Context, e: &'static crate::ejemplos::Ejemplo) {
+        let Ok(img) = image::load_from_memory(e.datos) else { return };
+        self.poner_imagen(ctx, &img, PathBuf::from(format!("{}.jpg", e.clave)), Some(e.nombre));
+        if self.screenshot.is_none() {
+            self.session.image = None;
+            self.session.sample = Some(e.clave.to_string());
+            self.session_dirty = true;
+        }
+    }
+
+    fn poner_imagen(&mut self, ctx: &Context, img: &image::DynamicImage, path: PathBuf, ejemplo: Option<&'static str>) {
+        let gris = crate::tono::gris(img);
+        let aspecto = gris.width() as f32 / gris.height().max(1) as f32;
+        // Miniatura en color para «Ver la imagen».
+        let color = img.thumbnail(1400, 1400).to_rgba8();
+        let tex = ctx.load_texture("imagen", ColorImage::from_rgba_unmultiplied([color.width() as usize, color.height() as usize], color.as_raw()), TextureOptions::LINEAR);
+        self.imagen = Some(Imagen { path, ejemplo, gris: Arc::new(gris), aspecto, textura: tex });
+        self.tono = None;
     }
 
     fn pagina(&self) -> Pagina {
@@ -442,8 +461,8 @@ impl App {
         type Fut = std::pin::Pin<Box<dyn std::future::Future<Output = Option<rfd::FileHandle>> + Send>>;
         let d = rfd::AsyncFileDialog::new();
         let carpeta = match destino {
-            Destino::Imagen => self.imagen.as_ref().and_then(|i| i.path.parent().map(Path::to_path_buf)),
-            _ => self.session.out_dir.clone().or_else(|| self.imagen.as_ref().and_then(|i| i.path.parent().map(Path::to_path_buf))),
+            Destino::Imagen => self.imagen.as_ref().and_then(|i| i.path.parent().filter(|p| p.is_dir()).map(Path::to_path_buf)),
+            _ => self.session.out_dir.clone().or_else(|| self.imagen.as_ref().and_then(|i| i.path.parent().filter(|p| p.is_dir()).map(Path::to_path_buf))),
         };
         let d = match &carpeta {
             Some(x) => d.set_directory(x),
@@ -561,6 +580,21 @@ impl App {
             if ui.add(IconButton::new(Icon::Open, Tone::File).label(t!("Abrir imagen…"))).on_hover_text(crate::estilo::tecla("Ctrl+O")).clicked() {
                 self.elegir(Destino::Imagen, &ctx);
             }
+            let mut elegido = None;
+            ui.menu_button(format!("{} ⏷", t!("Ejemplos")), |ui| {
+                for e in crate::ejemplos::EJEMPLOS {
+                    let actual = self.imagen.as_ref().is_some_and(|i| i.ejemplo == Some(e.nombre));
+                    if ui.selectable_label(actual, e.nombre).clicked() {
+                        elegido = Some(e);
+                        ui.close();
+                    }
+                }
+            })
+            .response
+            .on_hover_text(t!("Retratos incluidos para probar"));
+            if let Some(e) = elegido {
+                self.abrir_ejemplo(&ctx, e);
+            }
             ui.separator();
             let listo = self.patron.as_ref().is_some_and(|p| p.clave == self.clave_campo()) && self.exportando.is_none();
             ui.add_enabled_ui(listo, |ui| {
@@ -612,7 +646,7 @@ impl App {
             seccion(ui, t!("Imagen"));
             match &self.imagen {
                 Some(img) => {
-                    let nombre = img.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                    let nombre = img.ejemplo.map(|n| format!("{n} ({})", t!("ejemplo"))).unwrap_or_else(|| img.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default());
                     ui.horizontal(|ui| {
                         let (w, h) = (64.0, 64.0 / img.aspecto.max(0.2)).min_lado(64.0);
                         ui.add(egui::Image::new(&img.textura).fit_to_exact_size(vec2(w, h)).corner_radius(4.0));
@@ -622,7 +656,7 @@ impl App {
                         });
                     });
                 }
-                None => crate::estilo::alerta(ui, crate::estilo::Tipo::Info, t!("Abre una imagen (o arrástrala aquí). Sin imagen se dibuja un gris parejo.")),
+                None => crate::estilo::alerta(ui, crate::estilo::Tipo::Info, t!("Abre una imagen (o arrástrala aquí) o elige uno de los Ejemplos. Sin imagen se dibuja un gris parejo.")),
             }
             ui.add_space(4.0);
             rejilla(ui, "imagen", |ui| {

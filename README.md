@@ -4,17 +4,20 @@ Convierte una imagen en un **laberinto para imprimir y rellenar a mano**. Los mu
 zonas oscuras de la imagen y adelgazan en las claras: de cerca es un laberinto, y de lejos, una
 vez rellenado con pluma, aparece la imagen.
 
-![dedalo con líneas de flujo sobre la imagen de una esfera](docs/dedalo-flujo.png)
+![dedalo con líneas de flujo sobre el retrato de ejemplo de Lincoln](docs/dedalo-flujo.png)
 
 ## Cómo funciona
 
-1. **Abre una imagen** (PNG, JPEG, GIF, WebP o BMP), o arrástrala a la ventana. Brillo, contraste,
-   niveles automáticos y negativo ajustan cómo se lee.
+1. **Abre una imagen** (PNG, JPEG, GIF, WebP o BMP), arrástrala a la ventana o elige uno de los
+   **Ejemplos** incluidos (retratos de dominio público de Wikimedia Commons: Lincoln, Einstein,
+   Douglass, Marie Curie y la Mona Lisa). Brillo, contraste, niveles automáticos y negativo ajustan
+   cómo se lee.
 2. **Elige el patrón:**
    - **Líneas de flujo:** líneas que avanzan con curvas suaves sin cruzarse nunca, como un grabado. En lo
      oscuro engordan hasta dejar solo el canal mínimo; en lo claro quedan finas (nunca huecos vacíos). Se
-     colocan con el método de Jobard y Lefer (1997). Corren casi paralelas y se curvan siguiendo los bordes
-     de la imagen (tensor de estructura a dos escalas; «Siguen la imagen», de 0 a 100 %). Con
+     colocan con el método de Jobard y Lefer (1997). Son largas, como espagueti: rodean las formas de la
+     imagen como curvas de nivel (tensor de estructura a varias escalas, del detalle a la forma grande,
+     con una ondulación suave; «Siguen la imagen», de 0 a 100 %). Con
      **Zonas**, cada banda de tono se rellena con sus propias líneas en otra dirección. Con **Fondo liso**,
      las zonas claras de un solo tono (por ejemplo, un fondo blanco) quedan sin líneas. Las líneas
      nunca se acercan más que un canal mínimo y dos muros mínimos, así siempre cabe la pluma.
