@@ -139,6 +139,16 @@ struct Punto {
     idx: i32,
 }
 
+/// Segmento de una línea (de su punto `idx` al siguiente) y la celda de `Espacio` donde empieza.
+#[derive(Clone, Copy)]
+struct Segmento {
+    a: (f32, f32),
+    b: (f32, f32),
+    linea: u32,
+    idx: i32,
+    celda: (usize, usize),
+}
+
 /// Rejilla espacial de puntos (celdas de `lado` mm).
 struct Espacio {
     w: usize,
@@ -491,51 +501,89 @@ pub fn flujo(ancho: f32, alto: f32, periodo: f32, semilla: u64, tono: Option<&To
     let (cw, ch) = ((ancho / paso).ceil() as usize + 1, (alto / paso).ceil() as usize + 1);
     let mut v = vec![s_max; cw * ch];
     let hechas = std::sync::atomic::AtomicUsize::new(0);
-    v.par_chunks_mut(cw).enumerate().for_each(|(j, fila)| {
-        let y = j as f32 * paso;
-        for (i, o) in fila.iter_mut().enumerate() {
-            let x = i as f32 * paso;
-            let s = sep(x, y);
-            let (ci, cj) = seg.celda(x, y);
-            // La línea más cercana (d1) y la más cercana de las demás (d2): el
-            // campo es la posición dentro del canal entre las dos (0 = sobre la
-            // línea, 0,5 = en medio). Así la tinta nunca cierra un canal.
-            let (mut d1, mut id1, mut idx1) = (f32::MAX, u32::MAX, 0i32);
-            let mut d2 = f32::MAX;
-            for b in cj.saturating_sub(1)..=(cj + 1).min(seg.h - 1) {
-                for a in ci.saturating_sub(1)..=(ci + 1).min(seg.w - 1) {
-                    for p in &seg.celdas[b * seg.w + a] {
-                        // Segmento p → siguiente punto de su línea.
-                        let l = &lineas[p.linea as usize];
-                        let k = p.idx as usize;
-                        let q = l[(k + 1).min(l.len() - 1)];
-                        let d = dist2_seg(x, y, p.x, p.y, q.0, q.1);
-                        let misma = p.linea == id1 && (p.idx - idx1).abs() < salto_campo;
-                        if d < d1 {
-                            if !misma {
-                                d2 = d2.min(d1);
-                            }
-                            (d1, id1, idx1) = (d, p.linea, p.idx);
-                        } else if !misma {
-                            d2 = d2.min(d);
-                        }
-                    }
+    // La línea más cercana (d1) y la más cercana de las demás (d2) desde (x, y),
+    // mirando los segmentos de `segs` que están en las 3 × 3 celdas de su alrededor.
+    let mas_cercanas = |x: f32, y: f32, segs: &mut dyn Iterator<Item = &Segmento>| -> (f32, f32) {
+        let (ci, cj) = seg.celda(x, y);
+        let (mut d1, mut id1, mut idx1) = (f32::MAX, u32::MAX, 0i32);
+        let mut d2 = f32::MAX;
+        for s in segs {
+            if s.celda.0.abs_diff(ci) > 1 || s.celda.1.abs_diff(cj) > 1 {
+                continue;
+            }
+            let d = dist2_seg(x, y, s.a.0, s.a.1, s.b.0, s.b.1);
+            let misma = s.linea == id1 && (s.idx - idx1).abs() < salto_campo;
+            if d < d1 {
+                if !misma {
+                    d2 = d2.min(d1);
+                }
+                (d1, id1, idx1) = (d, s.linea, s.idx);
+            } else if !misma {
+                d2 = d2.min(d);
+            }
+        }
+        (d1, d2)
+    };
+    // Segmentos (punto → el siguiente de su línea) de las celdas i0..=i1 × j0..=j1, en orden.
+    let segmentos = |i0: usize, i1: usize, j0: usize, j1: usize, lista: &mut Vec<Segmento>| {
+        lista.clear();
+        for b in j0..=j1.min(seg.h - 1) {
+            for a in i0..=i1.min(seg.w - 1) {
+                for p in &seg.celdas[b * seg.w + a] {
+                    let l = &lineas[p.linea as usize];
+                    let q = l[(p.idx as usize + 1).min(l.len() - 1)];
+                    lista.push(Segmento { a: (p.x, p.y), b: q, linea: p.linea, idx: p.idx, celda: (a, b) });
                 }
             }
-            let (d1, d2) = (d1.sqrt().min(2.0 * s), d2.sqrt().min(2.0 * s));
-            // Grosor en mm: el tono es la fracción del hueco entre las dos líneas
-            // que lleva tinta, sin bajar del muro mínimo ni dejar un canal menor
-            // que el mínimo. El campo es una distancia (mm): bordes lisos.
-            let hueco = d1 + d2;
-            // Tono fino (no la rejilla gruesa): el grosor cambia a lo largo de la
-            // línea con el detalle de la imagen, como en el grabado.
-            let t = tono_en(x, y);
-            let medio = (t * hueco / 2.0).max(op.muro_min / 2.0);
-            let tope = ((hueco - op.canal_min) / 2.0).max(op.muro_min / 2.0);
-            *o = d1 - medio.min(tope);
+        }
+    };
+    // Por bloques de B × B muestras: en el centro del bloque se buscan d1 y d2, y para
+    // las muestras del bloque solo cuentan los segmentos a menos de d2 + 2·radio del
+    // centro (los demás quedan más lejos que la segunda línea: no pueden ganar).
+    const B: usize = 8;
+    let radio = paso * (B - 1) as f32 * std::f32::consts::FRAC_1_SQRT_2;
+    let filas_b = ch.div_ceil(B);
+    v.par_chunks_mut(cw * B).enumerate().for_each(|(jb, bloque)| {
+        let (mut todos, mut cerca_c) = (Vec::new(), Vec::new());
+        let filas = bloque.len() / cw;
+        for i0 in (0..cw).step_by(B) {
+            let cols = B.min(cw - i0);
+            let (j0, i1, j1) = (jb * B, i0 + cols - 1, jb * B + filas - 1);
+            let (a0, b0) = seg.celda(i0 as f32 * paso, j0 as f32 * paso);
+            let (a1, b1) = seg.celda(i1 as f32 * paso, j1 as f32 * paso);
+            segmentos(a0.saturating_sub(1), a1 + 1, b0.saturating_sub(1), b1 + 1, &mut todos);
+            let (xc, yc) = ((i0 + i1) as f32 * paso / 2.0, (j0 + j1) as f32 * paso / 2.0);
+            let (_, d2c) = mas_cercanas(xc, yc, &mut todos.iter());
+            let lista = if d2c < f32::MAX {
+                let tope = (d2c.sqrt() + 2.0 * radio).powi(2);
+                cerca_c.clear();
+                cerca_c.extend(todos.iter().filter(|s| dist2_seg(xc, yc, s.a.0, s.a.1, s.b.0, s.b.1) <= tope).copied());
+                &cerca_c
+            } else {
+                &todos
+            };
+            for fj in 0..filas {
+                let y = (j0 + fj) as f32 * paso;
+                for i in i0..=i1 {
+                    let x = i as f32 * paso;
+                    let s = sep(x, y);
+                    let (d1, d2) = mas_cercanas(x, y, &mut lista.iter());
+                    let (d1, d2) = (d1.sqrt().min(2.0 * s), d2.sqrt().min(2.0 * s));
+                    // Grosor en mm: el tono es la fracción del hueco entre las dos líneas
+                    // que lleva tinta, sin bajar del muro mínimo ni dejar un canal menor
+                    // que el mínimo. El campo es una distancia (mm): bordes lisos.
+                    let hueco = d1 + d2;
+                    // Tono fino (no la rejilla gruesa): el grosor cambia a lo largo de la
+                    // línea con el detalle de la imagen, como en el grabado.
+                    let t = tono_en(x, y);
+                    let medio = (t * hueco / 2.0).max(op.muro_min / 2.0);
+                    let tope = ((hueco - op.canal_min) / 2.0).max(op.muro_min / 2.0);
+                    bloque[fj * cw + i] = d1 - medio.min(tope);
+                }
+            }
         }
         let n = hechas.fetch_add(1, Ordering::Relaxed);
-        ctl.avance.store((800 + n * 200 / ch) as u32, Ordering::Relaxed);
+        ctl.avance.store((800 + n * 200 / filas_b) as u32, Ordering::Relaxed);
     });
     // Suavizado [1 2 1] (una pasada): redondea los quiebros donde el grosor
     // permitido cambia de golpe (p. ej. donde empieza o acaba una línea vecina).
@@ -747,5 +795,24 @@ mod retratos {
             hoja.save(format!("{sal}/{nombre}.png")).unwrap();
             println!("{nombre}: {:?}", t.elapsed());
         }
+    }
+}
+
+#[cfg(test)]
+mod tiempo {
+    use super::*;
+
+    /// Cuánto tarda un retrato a toda la hoja carta (separación 4 mm, con rostro).
+    #[test]
+    #[ignore]
+    fn tiempo_retrato_carta() {
+        let img = image::load_from_memory(crate::ejemplos::buscar("lincoln").unwrap().datos).unwrap();
+        let (ancho, alto) = (139.5, 232.0);
+        let tono = Tono::new(&crate::tono::gris(&img), ancho, alto, 4.0);
+        let cara = crate::rostro::detectar(&img.to_rgb8()).map(|r| crate::rostro::Cara::new(&r, ancho, alto));
+        let op = Opciones { zonas: 1, sigue: 0.5, canal_min: 1.2, muro_min: 0.4, fondo_vacio: false };
+        let t = std::time::Instant::now();
+        let c = flujo(ancho, alto, 4.0, 1, Some(&tono), Ajuste::default(), op, cara.as_ref(), &Control::default()).unwrap();
+        println!("{}×{} muestras: {:?}", c.w, c.h, t.elapsed());
     }
 }

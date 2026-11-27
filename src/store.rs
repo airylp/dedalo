@@ -103,7 +103,35 @@ impl Default for Parametros {
     }
 }
 
+/// Grupo de ajustes del panel que se puede restablecer por separado.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Seccion {
+    Imagen,
+    Patron,
+    Hoja,
+    Impresion,
+}
+
 impl Parametros {
+    /// Los mismos parámetros con los de `s` de fábrica. En «Patrón» se conservan el
+    /// tipo y el trazado (semilla) y solo se tocan los ajustes que ese tipo usa.
+    pub fn restablecida(self, s: Seccion) -> Parametros {
+        let d = Parametros::default();
+        let mut p = self;
+        match s {
+            Seccion::Imagen => p.ajuste = d.ajuste,
+            Seccion::Patron => {
+                (p.periodo, p.muro_min, p.canal_min) = (d.periodo, d.muro_min, d.canal_min);
+                if p.tipo == Tipo::Flujo {
+                    (p.zonas, p.sigue, p.fondo_vacio, p.retrato) = (d.zonas, d.sigue, d.fondo_vacio, d.retrato);
+                }
+            }
+            Seccion::Hoja => (p.tamano, p.cuadro_cm, p.margen) = (d.tamano, d.cuadro_cm, d.margen),
+            Seccion::Impresion => (p.impresion, p.linea, p.gris) = (d.impresion, d.linea, d.gris),
+        }
+        p
+    }
+
     /// Valores dentro de lo razonable (el archivo se puede editar a mano).
     pub fn sano(mut self) -> Parametros {
         self.periodo = self.periodo.clamp(2.0, 20.0);
@@ -176,5 +204,20 @@ mod tests {
         let t = toml::to_string_pretty(&s).unwrap();
         assert!(t.contains("patron = \"laberinto\""));
         assert_eq!(toml::from_str::<Session>(&t).unwrap(), s);
+    }
+
+    #[test]
+    fn restablecer_por_seccion() {
+        let mut p = Parametros { tipo: Tipo::Laberinto, semilla: 7, periodo: 9.0, zonas: 3, margen: 30.0, linea: 0.5, ..Default::default() };
+        p.ajuste.brillo = 0.4;
+        let r = p.restablecida(Seccion::Patron);
+        assert_eq!((r.tipo, r.semilla, r.periodo), (Tipo::Laberinto, 7, 4.0));
+        assert_eq!(r.zonas, 3, "las zonas son de las líneas de flujo: el laberinto no las toca");
+        assert_eq!((r.margen, r.linea, r.ajuste.brillo), (30.0, 0.5, 0.4), "las otras secciones no cambian");
+        assert_eq!(p.restablecida(Seccion::Imagen).ajuste, Ajuste::default());
+        assert_eq!(p.restablecida(Seccion::Hoja).margen, 15.0);
+        assert_eq!(p.restablecida(Seccion::Impresion).linea, 0.2);
+        let f = Parametros { zonas: 3, ..Default::default() }.restablecida(Seccion::Patron);
+        assert_eq!(f, Parametros::default());
     }
 }

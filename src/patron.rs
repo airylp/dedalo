@@ -159,18 +159,9 @@ pub fn reaccion_difusion(ancho: f32, alto: f32, periodo: f32, semilla: u64, paso
         u2.par_chunks_mut(w).zip(v2.par_chunks_mut(w)).enumerate().for_each(|(j, (fu, fv))| {
             let jm = if j == 0 { 1 } else { j - 1 };
             let jp = if j + 1 == h { h - 2 } else { j + 1 };
-            let (rm, r, rp) = (jm * w, j * w, jp * w);
-            for i in 0..w {
-                let im = if i == 0 { 1 } else { i - 1 };
-                let ip = if i + 1 == w { w - 2 } else { i + 1 };
-                let lap = |a: &[f32]| {
-                    0.2 * (a[r + im] + a[r + ip] + a[rm + i] + a[rp + i]) + 0.05 * (a[rm + im] + a[rm + ip] + a[rp + im] + a[rp + ip]) - a[r + i]
-                };
-                let (uu, vv) = (u[r + i], v[r + i]);
-                let uvv = uu * vv * vv;
-                fu[i] = (uu + RD_DU * lap(&u) - uvv + RD_F * (1.0 - uu)).clamp(0.0, 1.0);
-                fv[i] = (vv + RD_DV * lap(&v) + uvv - (RD_F + RD_K) * vv).clamp(0.0, 1.0);
-            }
+            let (um, uc, up) = (&u[jm * w..][..w], &u[j * w..][..w], &u[jp * w..][..w]);
+            let (vm, vc, vp) = (&v[jm * w..][..w], &v[j * w..][..w], &v[jp * w..][..w]);
+            rd_fila([um, uc, up], [vm, vc, vp], fu, fv);
         });
         std::mem::swap(&mut u, &mut u2);
         std::mem::swap(&mut v, &mut v2);
@@ -179,6 +170,32 @@ pub fn reaccion_difusion(ancho: f32, alto: f32, periodo: f32, semilla: u64, paso
     // V alto = raya: se invierte para que «bajo = muro».
     let campo: Vec<f32> = v.iter().map(|x| -x).collect();
     Some(Campo { w, h, v: campo, paso, x0, y0, ancho, alto, solucion: vec![], recortar: true, fijo: false })
+}
+
+/// Un paso de Gray-Scott en una fila (`u`, `v` = fila de arriba, la misma y la de abajo;
+/// bordes reflejados). Cortes de largo fijo: sin comprobaciones de límites, se vectoriza.
+fn rd_fila(u: [&[f32]; 3], v: [&[f32]; 3], fu: &mut [f32], fv: &mut [f32]) {
+    let w = fu.len();
+    #[inline(always)]
+    fn celda(u: [&[f32]; 3], v: [&[f32]; 3], im: usize, i: usize, ip: usize) -> (f32, f32) {
+        let lap = |[m, c, p]: [&[f32]; 3]| 0.2 * (c[im] + c[ip] + m[i] + p[i]) + 0.05 * (m[im] + m[ip] + p[im] + p[ip]) - c[i];
+        let (uu, vv) = (u[1][i], v[1][i]);
+        let uvv = uu * vv * vv;
+        ((uu + RD_DU * lap(u) - uvv + RD_F * (1.0 - uu)).clamp(0.0, 1.0), (vv + RD_DV * lap(v) + uvv - (RD_F + RD_K) * vv).clamp(0.0, 1.0))
+    }
+    (fu[0], fv[0]) = celda(u, v, 1, 0, 1);
+    (fu[w - 1], fv[w - 1]) = celda(u, v, w - 2, w - 1, w - 2);
+    let n = w - 2;
+    let [um, uc, up] = u.map(|f| &f[..n + 2]);
+    let [vm, vc, vp] = v.map(|f| &f[..n + 2]);
+    let (fu, fv) = (&mut fu[1..n + 1], &mut fv[1..n + 1]);
+    for k in 0..n {
+        let lap = |m: &[f32], c: &[f32], p: &[f32]| 0.2 * (c[k] + c[k + 2] + m[k + 1] + p[k + 1]) + 0.05 * (m[k] + m[k + 2] + p[k] + p[k + 2]) - c[k + 1];
+        let (uu, vv) = (uc[k + 1], vc[k + 1]);
+        let uvv = uu * vv * vv;
+        fu[k] = (uu + RD_DU * lap(um, uc, up) - uvv + RD_F * (1.0 - uu)).clamp(0.0, 1.0);
+        fv[k] = (vv + RD_DV * lap(vm, vc, vp) + uvv - (RD_F + RD_K) * vv).clamp(0.0, 1.0);
+    }
 }
 
 // ---------------------------------------------------------------- laberinto

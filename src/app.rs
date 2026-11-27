@@ -8,7 +8,7 @@ use crate::contorno::{Dibujo, Limites};
 use crate::icons::{Icon, IconButton, Tone};
 use crate::patron::{Campo, Control, Tipo, Umbrales};
 use crate::salida::{Impresion, Pagina, Tamano, Trazo};
-use crate::store::{self, Parametros, Session};
+use crate::store::{self, Parametros, Seccion, Session};
 use crate::tono::Tono;
 use eframe::egui::{
     self, Align, Align2, CentralPanel, Color32, ColorImage, Context, Key, Layout, Modifiers, Panel, RawInput, Rect, RichText, ScrollArea, Sense, Slider,
@@ -670,10 +670,25 @@ impl App {
     /// Panel izquierdo: imagen, patrón, hoja e impresión.
     fn controles(&mut self, ui: &mut Ui) {
         let antes = self.p;
-        use crate::estilo::{fila, fila_bloque, rejilla, seccion};
+        use crate::estilo::{fila, fila_bloque, rejilla};
+        // Título de la sección con ↺ a la derecha (activo si algo difiere de fábrica).
+        let seccion = |ui: &mut Ui, p: &mut Parametros, titulo: &str, s: Seccion| {
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(titulo.to_uppercase()).size(11.0).strong().color(crate::estilo::Paleta::de(ui).apagado).extra_letter_spacing(0.6));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let r = p.restablecida(s);
+                    let b = ui.add_enabled(r != *p, IconButton::new(Icon::Reload, Tone::Tool).small());
+                    if b.on_hover_text(t!("Restablecer esta sección")).on_disabled_hover_text(t!("Ya tiene los valores de fábrica")).clicked() {
+                        *p = r;
+                    }
+                });
+            });
+            ui.add_space(2.0);
+        };
         ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             ui.add_space(4.0);
-            seccion(ui, t!("Imagen"));
+            seccion(ui, &mut self.p, t!("Imagen"), Seccion::Imagen);
             match &self.imagen {
                 Some(img) => {
                     let nombre = img.ejemplo.map(|n| format!("{n} ({})", t!("ejemplo"))).unwrap_or_else(|| img.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default());
@@ -704,7 +719,7 @@ impl App {
                 });
             });
 
-            seccion(ui, t!("Patrón"));
+            seccion(ui, &mut self.p, t!("Patrón"), Seccion::Patron);
             rejilla(ui, "patron", |ui| {
                 fila_bloque(ui, t!("Tipo"), None, |ui| {
                     ui.vertical(|ui| {
@@ -771,7 +786,7 @@ impl App {
                 }
             });
 
-            seccion(ui, t!("Hoja"));
+            seccion(ui, &mut self.p, t!("Hoja"), Seccion::Hoja);
             rejilla(ui, "hoja", |ui| {
                 fila_bloque(ui, t!("Tamaño"), None, |ui| {
                     ui.vertical(|ui| {
@@ -787,7 +802,7 @@ impl App {
                 });
             });
 
-            seccion(ui, t!("Impresión"));
+            seccion(ui, &mut self.p, t!("Impresión"), Seccion::Impresion);
             rejilla(ui, "impresion", |ui| {
                 fila_bloque(ui, t!("Se imprime"), None, |ui| {
                     ui.vertical(|ui| {
