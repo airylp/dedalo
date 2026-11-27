@@ -24,6 +24,9 @@ pub enum Tipo {
     /// Una línea en espiral desde el centro (ver `espiral.rs`).
     #[serde(rename = "espiral")]
     Espiral,
+    /// Una línea en espiral que se aprieta en lo oscuro y se abre en lo claro (`espiral::espiral_densa`).
+    #[serde(rename = "espiral_densa")]
+    EspiralDensa,
 }
 
 /// Valores muestreados en una rejilla regular (en mm, desde la esquina superior

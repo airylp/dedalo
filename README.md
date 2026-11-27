@@ -33,6 +33,10 @@ vez rellenado con pluma, aparece la imagen.
    - **Espiral:** una sola línea que sale del centro y gira hasta cubrir la hoja. En lo oscuro las
      vueltas se juntan y la línea engorda; en lo claro se separan y adelgaza. Se imprime terminada:
      no hay nada que rellenar.
+   - **Espiral densa:** también una sola línea, fina y casi del mismo grosor, pero cada vuelta se
+     acerca a la anterior en lo oscuro y se aleja en lo claro. El tono sale de lo apretado de las
+     vueltas, así que la espiral queda irregular: se amontona en ojos, cejas o boca y se abre mucho
+     en lo blanco. Con un rostro, sale de la cara y termina cuando abarca cara, pelo y cuello.
 3. **Separación:** la distancia de un canal al siguiente. **Muro mínimo** y **canal mínimo**
    garantizan que siempre quede un trazo visible y sitio para la pluma.
 4. **Hoja:** carta completa (horizontal si la imagen es apaisada) o un cuadro de N cm centrado, con
@@ -74,6 +78,10 @@ Retratos de dominio público (Wikimedia Commons) en hoja carta con 2,5 mm de sep
 Espiral sobre el retrato de Lincoln:
 
 ![Espiral de una sola línea sobre el retrato de Lincoln](docs/dedalo-espiral.png)
+
+Espiral densa (las vueltas se aprietan en lo oscuro):
+
+![Espiral densa sobre el retrato de Lincoln](docs/dedalo-espiral-densa.png)
 
 Rayas de reacción-difusión:
 

@@ -141,6 +141,9 @@ impl Parametros {
                 if p.tipo == Tipo::Flujo {
                     (p.zonas, p.sigue, p.fondo_vacio, p.retrato) = (d.zonas, d.sigue, d.fondo_vacio, d.retrato);
                 }
+                if p.tipo == Tipo::EspiralDensa {
+                    p.retrato = d.retrato;
+                }
             }
             Seccion::Hoja => (p.tamano, p.cuadro_cm, p.margen) = (d.tamano, d.cuadro_cm, d.margen),
             Seccion::Impresion => (p.impresion, p.linea, p.gris) = (d.impresion, d.linea, d.gris),
@@ -151,7 +154,7 @@ impl Parametros {
     /// Valores dentro de lo razonable (el archivo se puede editar a mano).
     pub fn sano(mut self) -> Parametros {
         // Por debajo de 2 mm solo líneas de flujo y espiral (las rayas serían enormes de calcular).
-        self.periodo = self.periodo.clamp(if matches!(self.tipo, Tipo::Flujo | Tipo::Espiral) { 1.5 } else { 2.0 }, 20.0);
+        self.periodo = self.periodo.clamp(if matches!(self.tipo, Tipo::Flujo | Tipo::Espiral | Tipo::EspiralDensa) { 1.5 } else { 2.0 }, 20.0);
         self.grosor_max = self.grosor_max.clamp(0.2, GROSOR_SIN_LIMITE);
         self.muro_min = self.muro_min.clamp(0.1, self.periodo * 0.45);
         self.canal_min = self.canal_min.clamp(0.3, self.periodo * 0.8);

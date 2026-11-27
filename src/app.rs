@@ -196,6 +196,7 @@ impl App {
             Ok("reaccion") => p.tipo = Tipo::Reaccion,
             Ok("flujo") => p.tipo = Tipo::Flujo,
             Ok("espiral") => p.tipo = Tipo::Espiral,
+            Ok("espiral_densa") => p.tipo = Tipo::EspiralDensa,
             _ => {}
         }
         match std::env::var("DEDALO_IMPRESION").as_deref() {
@@ -316,7 +317,9 @@ impl App {
         let r = |x: f32| (x * 10.0).round() / 10.0;
         let flujo = self.p.tipo == Tipo::Flujo;
         // Líneas de flujo y espiral dependen de la imagen y de los límites de grosor.
-        let imagen = matches!(self.p.tipo, Tipo::Flujo | Tipo::Espiral);
+        let imagen = matches!(self.p.tipo, Tipo::Flujo | Tipo::Espiral | Tipo::EspiralDensa);
+        // El rostro: en las líneas de flujo y en la espiral densa (la centra y dice hasta dónde llegar).
+        let con_rostro = matches!(self.p.tipo, Tipo::Flujo | Tipo::EspiralDensa) && self.p.retrato;
         ClaveCampo {
             tipo: self.p.tipo,
             ancho: r(pag.area.0),
@@ -327,11 +330,11 @@ impl App {
             ajuste: imagen.then_some(self.p.ajuste),
             zonas: if flujo { self.p.zonas } else { 0 },
             sigue: if flujo { self.p.sigue } else { 0.0 },
-            canal_min: if imagen { self.p.canal_min } else { 0.0 },
+            canal_min: if imagen && self.p.tipo != Tipo::EspiralDensa { self.p.canal_min } else { 0.0 },
             muro_min: if imagen { self.p.muro_min } else { 0.0 },
             grosor_max: if imagen { self.p.grosor_max } else { 0.0 },
             fondo_vacio: flujo && self.p.fondo_vacio,
-            rostro: if flujo && self.p.retrato { self.imagen.as_ref().filter(|i| i.rostro.is_some()).map_or(0, |i| i.rostro_ver) } else { 0 },
+            rostro: if con_rostro { self.imagen.as_ref().filter(|i| i.rostro.is_some()).map_or(0, |i| i.rostro_ver) } else { 0 },
         }
     }
 
@@ -345,7 +348,7 @@ impl App {
 
     /// La espiral se imprime siempre terminada (no hay nada que rellenar).
     fn impresion(&self) -> Impresion {
-        if self.p.tipo == Tipo::Espiral { Impresion::Relleno } else { self.p.impresion }
+        if matches!(self.p.tipo, Tipo::Espiral | Tipo::EspiralDensa) { Impresion::Relleno } else { self.p.impresion }
     }
 
     /// Lanza, recoge o cancela el cálculo del patrón.
@@ -404,6 +407,11 @@ impl App {
                 Tipo::Espiral => {
                     let tono = gris.map(|g| Tono::new(&g, k.ancho, k.alto, k.periodo));
                     crate::espiral::espiral(k.ancho, k.alto, k.periodo, tono.as_ref(), k.ajuste.unwrap_or_default(), opciones, &c)
+                }
+                Tipo::EspiralDensa => {
+                    let tono = gris.map(|g| Tono::new(&g, k.ancho, k.alto, k.periodo));
+                    let cara = rostro.map(|r| crate::rostro::Cara::new(&r, k.ancho, k.alto));
+                    crate::espiral::espiral_densa(k.ancho, k.alto, k.periodo, tono.as_ref(), k.ajuste.unwrap_or_default(), opciones, cara.as_ref(), &c)
                 }
             };
             let r = campo.map(|campo| {
@@ -741,24 +749,27 @@ impl App {
                         ui.radio_value(&mut self.p.tipo, Tipo::Reaccion, t!("Rayas (reacción-difusión)"));
                         ui.radio_value(&mut self.p.tipo, Tipo::Laberinto, t!("Laberinto con salida"));
                         ui.radio_value(&mut self.p.tipo, Tipo::Espiral, t!("Espiral (una sola línea, terminada)"));
+                        ui.radio_value(&mut self.p.tipo, Tipo::EspiralDensa, t!("Espiral densa (se aprieta en lo oscuro)"));
                     });
                 });
                 fila(ui, t!("Separación"), Some(t!("De un canal al siguiente: más pequeña = más detalle y más trabajo de relleno")), |ui| {
-                    let min = if matches!(self.p.tipo, Tipo::Flujo | Tipo::Espiral) { 1.5 } else { 2.5 };
+                    let min = if matches!(self.p.tipo, Tipo::Flujo | Tipo::Espiral | Tipo::EspiralDensa) { 1.5 } else { 2.5 };
                     ui.add(Slider::new(&mut self.p.periodo, min..=12.0).suffix(" mm").fixed_decimals(1));
                 });
                 fila(ui, t!("Muro mínimo"), Some(t!("Lo más fino que queda un muro en las zonas claras")), |ui| {
                     ui.add(Slider::new(&mut self.p.muro_min, 0.1..=(self.p.periodo * 0.45)).suffix(" mm").fixed_decimals(2));
                 });
-                fila(ui, t!("Canal mínimo"), Some(t!("Lo más estrecho que queda un canal en las zonas oscuras")), |ui| {
-                    ui.add(Slider::new(&mut self.p.canal_min, 0.3..=(self.p.periodo * 0.8)).suffix(" mm").fixed_decimals(2));
-                });
-                if matches!(self.p.tipo, Tipo::Flujo | Tipo::Espiral) {
+                if self.p.tipo != Tipo::EspiralDensa {
+                    fila(ui, t!("Canal mínimo"), Some(t!("Lo más estrecho que queda un canal en las zonas oscuras")), |ui| {
+                        ui.add(Slider::new(&mut self.p.canal_min, 0.3..=(self.p.periodo * 0.8)).suffix(" mm").fixed_decimals(2));
+                    });
+                }
+                if matches!(self.p.tipo, Tipo::Flujo | Tipo::Espiral | Tipo::EspiralDensa) {
                     fila(ui, t!("Grosor máximo"), Some(t!("Lo más gruesa que puede ser una línea, aunque la zona sea oscura: menos = líneas más finas")), |ui| {
                         ui.add(Slider::new(&mut self.p.grosor_max, 0.2..=store::GROSOR_SIN_LIMITE).fixed_decimals(1).custom_formatter(|v, _| if v as f32 >= store::GROSOR_SIN_LIMITE { t!("sin límite").to_string() } else { format!("{v:.1} mm") }).custom_parser(|t| t.trim().trim_end_matches("mm").trim().replace(',', ".").parse().ok()));
                     });
                 }
-                if self.p.tipo != Tipo::Espiral {
+                if !matches!(self.p.tipo, Tipo::Espiral | Tipo::EspiralDensa) {
                     fila(ui, t!("Trazado"), None, |ui| {
                         ui.add(egui::DragValue::new(&mut self.p.semilla).range(0..=999_999).prefix("#"));
                         if ui.add(IconButton::new(Icon::Reload, Tone::Tool).small()).on_hover_text(t!("Mismo estilo, otro trazado al azar")).clicked() {
@@ -779,15 +790,19 @@ impl App {
                             self.p.sigue = pct / 100.0;
                         }
                     });
+                }
+                if matches!(self.p.tipo, Tipo::Flujo | Tipo::EspiralDensa) {
+                    let flujo = self.p.tipo == Tipo::Flujo;
                     let estado = match &self.imagen {
                         Some(i) if i.buscando.is_some() => Some(t!("Buscando el rostro…")),
                         Some(i) if i.rostro.is_some() => Some(t!("Rostro encontrado: corrige los puntos en «Imagen original»")),
                         Some(_) => Some(t!("No se encontró un rostro")),
                         None => None,
                     };
-                    fila_bloque(ui, t!("Retrato"), Some(t!("Más líneas en la cara; siguen párpados, cejas, nariz, surcos y boca; el pelo va en mechones")), |ui| {
+                    let ayuda = if flujo { t!("Más líneas en la cara; siguen párpados, cejas, nariz, surcos y boca; el pelo va en mechones") } else { t!("La espiral sale de la cara y termina al abarcar cara, pelo y cuello (sin rostro, cubre toda el área)") };
+                    fila_bloque(ui, t!("Retrato"), Some(ayuda), |ui| {
                         ui.vertical(|ui| {
-                            ui.checkbox(&mut self.p.retrato, t!("Ojos, cejas, nariz, boca y pelo"));
+                            ui.checkbox(&mut self.p.retrato, if flujo { t!("Ojos, cejas, nariz, boca y pelo") } else { t!("Centrar en el rostro") });
                             if let (true, Some(e)) = (self.p.retrato, estado) {
                                 ui.label(RichText::new(e).small().weak());
                             }
@@ -827,7 +842,7 @@ impl App {
 
             seccion(ui, &mut self.p, t!("Impresión"), Seccion::Impresion);
             rejilla(ui, "impresion", |ui| {
-                let espiral = self.p.tipo == Tipo::Espiral;
+                let espiral = matches!(self.p.tipo, Tipo::Espiral | Tipo::EspiralDensa);
                 fila_bloque(ui, t!("Se imprime"), None, |ui| {
                     ui.vertical(|ui| {
                         ui.add_enabled_ui(!espiral, |ui| {
@@ -958,7 +973,7 @@ impl App {
                 painter.image(img.textura.id(), area, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
             }
             // Rasgos detectados, con asas para corregirlos.
-            if self.p.retrato && self.p.tipo == Tipo::Flujo {
+            if self.p.retrato && matches!(self.p.tipo, Tipo::Flujo | Tipo::EspiralDensa) {
                 if let Some(img) = &mut self.imagen {
                     if let Some(r) = &mut img.rostro {
                         use crate::rostro::{Asa, CONTORNOS};
@@ -1021,7 +1036,7 @@ impl App {
                 Tipo::Flujo => t!("Trazando las líneas…"),
                 Tipo::Reaccion => t!("Dejando crecer las rayas…"),
                 Tipo::Laberinto => t!("Trazando el laberinto…"),
-                Tipo::Espiral => t!("Girando la espiral…"),
+                Tipo::Espiral | Tipo::EspiralDensa => t!("Girando la espiral…"),
             };
             painter.text(caja.center() - vec2(0.0, 12.0), Align2::CENTER_CENTER, texto, egui::FontId::proportional(14.0), ui.visuals().text_color());
             let barra = Rect::from_min_size(caja.left_center() + vec2(20.0, 8.0), vec2(220.0, 6.0));
