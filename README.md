@@ -17,7 +17,10 @@ vez rellenado con pluma, aparece la imagen.
      oscuro engordan hasta dejar solo el canal mínimo; en lo claro quedan finas (nunca huecos vacíos). Se
      colocan con el método de Jobard y Lefer (1997). Son largas, como espagueti: rodean las formas de la
      imagen como curvas de nivel (tensor de estructura a varias escalas, del detalle a la forma grande,
-     con una ondulación suave; «Siguen la imagen», de 0 a 100 %). Con
+     con una ondulación suave; «Siguen la imagen», de 0 a 100 %). Con **Retrato** (activado si se encuentra
+     un rostro), los rasgos tienen un trato especial: las líneas giran en anillos alrededor del iris,
+     corren paralelas al óvalo de la cara, a las cejas, la nariz y los labios, se juntan para dar más
+     detalle en los rasgos y en el pelo siguen los mechones, separadas de la frente. Con
      **Zonas**, cada banda de tono se rellena con sus propias líneas en otra dirección. Con **Fondo liso**,
      las zonas claras de un solo tono (por ejemplo, un fondo blanco) quedan sin líneas. Las líneas
      nunca se acercan más que un canal mínimo y dos muros mínimos, así siempre cabe la pluma.
@@ -34,6 +37,12 @@ vez rellenado con pluma, aparece la imagen.
    - contorno y muro en gris: una guía de qué rellenar;
    - solo el contorno;
    - los muros ya rellenos, como se verá al terminar.
+
+El rostro se busca solo al abrir la imagen, con los modelos de MediaPipe (detector de caras y malla de
+468 puntos, Apache-2.0, ver `modelos/LEEME.md`) ejecutados en Rust puro con tract, sin conexión. En
+«Imagen original» se ven los rasgos encontrados y se pueden corregir arrastrando sus puntos.
+
+![Rasgos detectados sobre la imagen original, con puntos para corregirlos](docs/dedalo-rasgos.png)
 
 La vista previa se acerca y se aleja con la rueda del ratón (hacia el puntero), se mueve arrastrando
 y vuelve a la hoja entera con doble clic; al acercar se redibuja nítida la parte visible.
@@ -52,7 +61,7 @@ Detalle de los PDF (líneas de flujo a 400 ppp y laberinto a 300 ppp):
 
 ![Detalle del PDF del laberinto](docs/dedalo-pdf-detalle.png)
 
-Retratos de dominio público (Wikimedia Commons) en hoja carta con 2,5 mm de separación:
+Retratos de dominio público (Wikimedia Commons) en hoja carta con 2,5 mm de separación y tratamiento de retrato:
 
 ![Lincoln con líneas de flujo](docs/dedalo-retrato-lincoln.png)
 

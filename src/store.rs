@@ -63,6 +63,13 @@ pub struct Parametros {
     /// Líneas de flujo: sin líneas en el fondo liso y claro.
     #[serde(rename = "fondo_vacio", default)]
     pub fondo_vacio: bool,
+    /// Líneas de flujo: tratamiento de retrato (ojos, cejas, nariz, boca, óvalo y pelo) si hay un rostro.
+    #[serde(rename = "retrato", default = "si")]
+    pub retrato: bool,
+}
+
+fn si() -> bool {
+    true
 }
 
 fn una() -> u32 {
@@ -91,6 +98,7 @@ impl Default for Parametros {
             zonas: 1,
             sigue: 0.5,
             fondo_vacio: false,
+            retrato: true,
         }
     }
 }

@@ -11,6 +11,7 @@ mod flujo;
 mod icon;
 mod icons;
 mod patron;
+mod rostro;
 mod salida;
 mod store;
 mod tono;

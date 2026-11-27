@@ -31,6 +31,13 @@ struct Imagen {
     aspecto: f32,
     /// En color, reducida, para «Ver la imagen».
     textura: TextureHandle,
+    /// Rasgos del rostro (corregibles arrastrando) y los detectados (para volver a ellos).
+    rostro: Option<crate::rostro::Rostro>,
+    detectado: Option<crate::rostro::Rostro>,
+    /// Detección en curso.
+    buscando: Option<Receiver<Option<crate::rostro::Rostro>>>,
+    /// Cambia cada vez que cambian los rasgos.
+    rostro_ver: u64,
 }
 
 /// Lo que decide la forma del patrón (si cambia, hay que recalcularlo).
@@ -49,6 +56,8 @@ struct ClaveCampo {
     canal_min: f32,
     muro_min: f32,
     fondo_vacio: bool,
+    /// Versión de los rasgos del rostro (0 = sin tratamiento de retrato).
+    rostro: u64,
 }
 
 struct Patron {
@@ -275,7 +284,16 @@ impl App {
         // Miniatura en color para «Ver la imagen».
         let color = img.thumbnail(1400, 1400).to_rgba8();
         let tex = ctx.load_texture("imagen", ColorImage::from_rgba_unmultiplied([color.width() as usize, color.height() as usize], color.as_raw()), TextureOptions::LINEAR);
-        self.imagen = Some(Imagen { path, ejemplo, gris: Arc::new(gris), aspecto, textura: tex });
+        // Rostro: en otro hilo (cargar los modelos y buscar tarda un poco).
+        let (tx, rx) = channel();
+        let rgb = img.thumbnail(1280, 1280).to_rgb8();
+        let repintar = ctx.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(crate::rostro::detectar(&rgb));
+            repintar.request_repaint();
+        });
+        self.ids += 1;
+        self.imagen = Some(Imagen { path, ejemplo, gris: Arc::new(gris), aspecto, textura: tex, rostro: None, detectado: None, buscando: Some(rx), rostro_ver: self.ids });
         self.tono = None;
     }
 
@@ -308,6 +326,7 @@ impl App {
             canal_min: if flujo { self.p.canal_min } else { 0.0 },
             muro_min: if flujo { self.p.muro_min } else { 0.0 },
             fondo_vacio: flujo && self.p.fondo_vacio,
+            rostro: if flujo && self.p.retrato { self.imagen.as_ref().filter(|i| i.rostro.is_some()).map_or(0, |i| i.rostro_ver) } else { 0 },
         }
     }
 
@@ -361,12 +380,14 @@ impl App {
         let (c, k) = (ctl.clone(), quiero);
         let repintar = ctx.clone();
         let gris = self.imagen.as_ref().map(|i| i.gris.clone());
+        let rostro = self.imagen.as_ref().and_then(|i| i.rostro.clone()).filter(|_| k.rostro != 0);
         let opciones = crate::flujo::Opciones { zonas: k.zonas, sigue: k.sigue, canal_min: k.canal_min, muro_min: k.muro_min, fondo_vacio: k.fondo_vacio };
         std::thread::spawn(move || {
             let campo = match k.tipo {
                 Tipo::Flujo => {
                     let tono = gris.map(|g| Tono::new(&g, k.ancho, k.alto, k.periodo));
-                    crate::flujo::flujo(k.ancho, k.alto, k.periodo, k.semilla, tono.as_ref(), k.ajuste.unwrap_or_default(), opciones, &c)
+                    let cara = rostro.map(|r| crate::rostro::Cara::new(&r, k.ancho, k.alto));
+                    crate::flujo::flujo(k.ancho, k.alto, k.periodo, k.semilla, tono.as_ref(), k.ajuste.unwrap_or_default(), opciones, cara.as_ref(), &c)
                 }
                 Tipo::Reaccion => crate::patron::reaccion_difusion(k.ancho, k.alto, k.periodo, k.semilla, crate::patron::RD_PASOS, &c),
                 Tipo::Laberinto => crate::patron::laberinto(k.ancho, k.alto, k.periodo, k.semilla, &c),
@@ -505,6 +526,15 @@ impl App {
                     Ok(p) => self.avisos.exito(tf!("✔ Guardado: {p}", p = p.display())),
                     Err(e) => self.avisos.error(tf!("No se pudo guardar: {e}", e = e)),
                 }
+            }
+        }
+        if let Some(img) = &mut self.imagen {
+            if let Some(Ok(r)) = img.buscando.as_ref().map(|rx| rx.try_recv()) {
+                img.buscando = None;
+                img.detectado = r.clone();
+                img.rostro = r;
+                self.ids += 1;
+                img.rostro_ver = self.ids;
             }
         }
         let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).collect());
@@ -711,6 +741,28 @@ impl App {
                             self.p.sigue = pct / 100.0;
                         }
                     });
+                    let estado = match &self.imagen {
+                        Some(i) if i.buscando.is_some() => Some(t!("Buscando el rostro…")),
+                        Some(i) if i.rostro.is_some() => Some(t!("Rostro encontrado: corrige los puntos en «Imagen original»")),
+                        Some(_) => Some(t!("No se encontró un rostro")),
+                        None => None,
+                    };
+                    fila_bloque(ui, t!("Retrato"), Some(t!("Trato especial de ojos (anillos), cejas, nariz, boca, óvalo de la cara y pelo")), |ui| {
+                        ui.vertical(|ui| {
+                            ui.checkbox(&mut self.p.retrato, t!("Ojos, cejas, nariz, boca y pelo"));
+                            if let (true, Some(e)) = (self.p.retrato, estado) {
+                                ui.label(RichText::new(e).small().weak());
+                            }
+                            let corregido = self.imagen.as_ref().is_some_and(|i| i.rostro.is_some() && i.rostro != i.detectado);
+                            if self.p.retrato && corregido && ui.small_button(t!("Deshacer correcciones")).clicked() {
+                                if let Some(i) = &mut self.imagen {
+                                    i.rostro = i.detectado.clone();
+                                    self.ids += 1;
+                                    i.rostro_ver = self.ids;
+                                }
+                            }
+                        });
+                    });
                 }
                 if self.p.tipo == Tipo::Laberinto {
                     fila(ui, t!("Solución"), None, |ui| {
@@ -860,6 +912,40 @@ impl App {
         if self.ver == Ver::Original {
             if let Some(img) = &self.imagen {
                 painter.image(img.textura.id(), area, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+            }
+            // Rasgos detectados, con asas para corregirlos.
+            if self.p.retrato && self.p.tipo == Tipo::Flujo {
+                if let Some(img) = &mut self.imagen {
+                    if let Some(r) = &mut img.rostro {
+                        use crate::rostro::{Asa, CONTORNOS};
+                        let a_pant = |(u, v): (f32, f32)| area.min + vec2(u * area.width(), v * area.height());
+                        let acento = crate::estilo::acento();
+                        for (idx, cerrado) in CONTORNOS {
+                            let mut pts: Vec<_> = idx.iter().map(|&i| a_pant(r.puntos[i])).collect();
+                            if *cerrado {
+                                pts.push(pts[0]);
+                            }
+                            painter.add(egui::Shape::line(pts, Stroke::new(1.5, acento.gamma_multiply(0.8))));
+                        }
+                        let mut cambio = false;
+                        for (k, asa) in Asa::todas().into_iter().enumerate() {
+                            let c = a_pant(r.asa(asa));
+                            let resp = ui.interact(Rect::from_center_size(c, vec2(16.0, 16.0)), egui::Id::NULL.with(("dedalo_asa", k)), Sense::drag());
+                            if resp.dragged() {
+                                let d = resp.drag_delta();
+                                r.mover(asa, d.x / area.width(), d.y / area.height());
+                                cambio = true;
+                            }
+                            let activo = resp.hovered() || resp.dragged();
+                            painter.circle(c, if activo { 6.5 } else { 4.5 }, Color32::WHITE, Stroke::new(2.0, acento));
+                            resp.on_hover_cursor(egui::CursorIcon::Grab).on_hover_text(t!("Arrastra para corregir"));
+                        }
+                        if cambio {
+                            self.ids += 1;
+                            img.rostro_ver = self.ids;
+                        }
+                    }
+                }
             }
         } else if al_dia {
             let (x0, y0, x1, y1) = {

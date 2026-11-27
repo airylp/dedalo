@@ -14,6 +14,7 @@ rayon = "1.12"
 rfd = "0.17"
 serde = { version = "1.0.229", features = ["derive"] }
 toml = "1.2.2"
+tract-tflite = "0.23"
 
 # Ícono y datos de versión del .exe (solo al compilar en Windows): ver build.rs.
 [target.'cfg(windows)'.build-dependencies]
