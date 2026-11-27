@@ -28,6 +28,8 @@ pub struct Opciones {
     pub canal_min: f32,
     /// Grosor mínimo de una línea (mm).
     pub muro_min: f32,
+    /// Sin líneas en las zonas lisas y claras (fondo blanco o de un solo color claro).
+    pub fondo_vacio: bool,
 }
 
 /// Rejilla gruesa de valores (tono, zona, dirección).
@@ -206,6 +208,30 @@ pub fn flujo(ancho: f32, alto: f32, periodo: f32, semilla: u64, tono: Option<&To
     suave.suavizar(4);
     let zona_en = |x: f32, y: f32| -> u32 { ((suave.cercano(x, y) * zonas_n as f32) as u32).min(zonas_n - 1) };
 
+    // Fondo liso y claro: tono bajo y casi sin variación alrededor (≈ 1,5 periodos).
+    // Se limpia la máscara para no dejar islas pequeñas ni agujeros sueltos.
+    let fondo = if op.fondo_vacio {
+        let mut media = Rejilla { w: tonos.w, h: tonos.h, paso: g, v: tonos.v.clone() };
+        let mut cuad = Rejilla { w: tonos.w, h: tonos.h, paso: g, v: tonos.v.iter().map(|t| t * t).collect() };
+        media.suavizar(3);
+        cuad.suavizar(3);
+        let v: Vec<f32> = media
+            .v
+            .iter()
+            .zip(&cuad.v)
+            .map(|(m, q)| {
+                let var = (q - m * m).max(0.0);
+                ((*m < 0.3) && var < 0.0006) as u8 as f32
+            })
+            .collect();
+        let mut r = Rejilla { w: tonos.w, h: tonos.h, paso: g, v };
+        r.suavizar(2);
+        Some(r)
+    } else {
+        None
+    };
+    let en_fondo = |x: f32, y: f32| fondo.as_ref().is_some_and(|f| f.muestra(x, y) > 0.6);
+
     // Dirección: ruido + tangente de los bordes (tensor de estructura).
     let ruido = Ruido::new(semilla, 12.0 * periodo, ancho, alto);
     let (w, h) = (tonos.w, tonos.h);
@@ -298,7 +324,7 @@ pub fn flujo(ancho: f32, alto: f32, periodo: f32, semilla: u64, tono: Option<&To
             break;
         };
         let (sx, sy) = semilla_p;
-        if !dentro(sx, sy) || espacio.ocupado(sx, sy, 0.9 * sep(sx, sy), u32::MAX, 0, 0) {
+        if !dentro(sx, sy) || en_fondo(sx, sy) || espacio.ocupado(sx, sy, 0.9 * sep(sx, sy), u32::MAX, 0, 0) {
             continue;
         }
         let id = lineas.len() as u32;
@@ -317,7 +343,7 @@ pub fn flujo(ancho: f32, alto: f32, periodo: f32, semilla: u64, tono: Option<&To
                 let (mx, my) = (x + d1.0 * paso_l * 0.5, y + d1.1 * paso_l * 0.5);
                 let d2 = orienta(direccion(mx, my), d1);
                 let (nx, ny) = (x + d2.0 * paso_l, y + d2.1 * paso_l);
-                if !dentro(nx, ny) || zona_en(nx, ny) != zona {
+                if !dentro(nx, ny) || zona_en(nx, ny) != zona || en_fondo(nx, ny) {
                     break;
                 }
                 let idx = if lado == 0 { n as i32 } else { -(n as i32) };
@@ -447,7 +473,7 @@ mod tests {
         let img = image::GrayImage::from_fn(200, 100, |x, _| image::Luma([if x < 100 { 255 } else { 0 }]));
         let tono = Tono::new(&img, 100.0, 50.0, 4.0);
         let ajuste = Ajuste { niveles: false, ..Default::default() };
-        let c = flujo(100.0, 50.0, 4.0, 3, Some(&tono), ajuste, Opciones { zonas: 1, sigue: 0.0, canal_min: 1.0, muro_min: 0.4 }, &Control::default()).unwrap();
+        let c = flujo(100.0, 50.0, 4.0, 3, Some(&tono), ajuste, Opciones { zonas: 1, sigue: 0.0, canal_min: 1.0, muro_min: 0.4, fondo_vacio: false }, &Control::default()).unwrap();
         // Fracción de puntos muy cerca de una línea (campo < 0.15) a cada lado.
         let frac = |x0: f32, x1: f32| {
             let (mut n, mut cerca) = (0, 0);
@@ -498,7 +524,7 @@ mod diagnostico {
     fn bordes_suavizados() {
         let img = image::GrayImage::from_fn(200, 200, |x, y| image::Luma([((x + y) / 2) as u8]));
         let tono = Tono::new(&img, 60.0, 60.0, 4.0);
-        let op = Opciones { zonas: 1, sigue: 0.0, canal_min: 1.2, muro_min: 0.4 };
+        let op = Opciones { zonas: 1, sigue: 0.0, canal_min: 1.2, muro_min: 0.4, fondo_vacio: false };
         let c = flujo(60.0, 60.0, 4.0, 1, Some(&tono), Ajuste::default(), op, &Control::default()).unwrap();
         let u = Umbrales::new(&c);
         let d = Dibujo { campo: &c, umbrales: &u, tono: Some(&tono), ajuste: Ajuste::default(), limites: Limites::new(4.0, 0.4, 1.2) };

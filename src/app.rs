@@ -45,6 +45,7 @@ struct ClaveCampo {
     sigue: f32,
     canal_min: f32,
     muro_min: f32,
+    fondo_vacio: bool,
 }
 
 struct Patron {
@@ -151,6 +152,7 @@ pub struct App {
     avisos: crate::estilo::Avisos,
     screenshot: Option<String>,
     frames: u32,
+    capturado: bool,
 }
 
 /// Zoom máximo (veces la hoja entera).
@@ -181,6 +183,14 @@ impl App {
             Ok("reaccion") => p.tipo = Tipo::Reaccion,
             Ok("flujo") => p.tipo = Tipo::Flujo,
             _ => {}
+        }
+        match std::env::var("DEDALO_IMPRESION").as_deref() {
+            Ok("contorno") => p.impresion = Impresion::Contorno,
+            Ok("relleno") => p.impresion = Impresion::Relleno,
+            _ => {}
+        }
+        if std::env::var_os("DEDALO_FONDO_VACIO").is_some() {
+            p.fondo_vacio = true;
         }
         let mut app = App {
             p,
@@ -216,6 +226,7 @@ impl App {
             avisos: Default::default(),
             screenshot,
             frames: 0,
+            capturado: false,
         };
         let inicial = open.or_else(|| std::env::var_os("DEDALO_IMAGEN").map(PathBuf::from)).or_else(|| app.session.image.clone().filter(|p| p.is_file()));
         if let Some(path) = inicial {
@@ -274,6 +285,7 @@ impl App {
             sigue: if flujo { self.p.sigue } else { 0.0 },
             canal_min: if flujo { self.p.canal_min } else { 0.0 },
             muro_min: if flujo { self.p.muro_min } else { 0.0 },
+            fondo_vacio: flujo && self.p.fondo_vacio,
         }
     }
 
@@ -327,7 +339,7 @@ impl App {
         let (c, k) = (ctl.clone(), quiero);
         let repintar = ctx.clone();
         let gris = self.imagen.as_ref().map(|i| i.gris.clone());
-        let opciones = crate::flujo::Opciones { zonas: k.zonas, sigue: k.sigue, canal_min: k.canal_min, muro_min: k.muro_min };
+        let opciones = crate::flujo::Opciones { zonas: k.zonas, sigue: k.sigue, canal_min: k.canal_min, muro_min: k.muro_min, fondo_vacio: k.fondo_vacio };
         std::thread::spawn(move || {
             let campo = match k.tipo {
                 Tipo::Flujo => {
@@ -652,6 +664,9 @@ impl App {
                 if self.p.tipo == Tipo::Flujo {
                     fila(ui, t!("Zonas"), Some(t!("Bandas de tono: cada una se rellena con sus propias líneas, en otra dirección (1 = sin zonas)")), |ui| {
                         ui.add(Slider::new(&mut self.p.zonas, 1..=6));
+                    });
+                    fila(ui, t!("Fondo liso"), Some(t!("Las zonas claras de un solo tono (p. ej. un fondo blanco) quedan sin líneas")), |ui| {
+                        ui.checkbox(&mut self.p.fondo_vacio, t!("Dejarlo en blanco"));
                     });
                     fila(ui, t!("Siguen la imagen"), Some(t!("0 % = curvas al azar; 100 % = rodean las formas de la imagen")), |ui| {
                         let mut pct = (self.p.sigue * 100.0).round();
@@ -980,14 +995,32 @@ impl App {
             self.show_about = std::env::var_os("DEDALO_ACERCA").is_some();
             self.show_settings = std::env::var_os("DEDALO_AJUSTES").is_some();
             self.show_keys = std::env::var_os("DEDALO_ATAJOS").is_some();
+            // DEDALO_ACTUALIZAR=1 abre «Actualizar»; =ejecutar además lo lanza
+            // (con DEDALO_INSTALL_SH=script falso). DEDALO_ESPERA=ms retrasa la captura.
+            if std::env::var_os("DEDALO_ACTUALIZAR").is_some() {
+                self.open_updater(ctx);
+            }
+        }
+        if std::env::var("DEDALO_ACTUALIZAR").as_deref() == Ok("ejecutar") {
+            if let Some(u) = &self.updater {
+                if matches!(u.stage(), crate::update::Stage::Available(_)) {
+                    u.run(ctx.clone());
+                }
+            }
+        }
+        let espera = std::env::var("DEDALO_ESPERA").ok().and_then(|v| v.parse::<f64>().ok()).is_some_and(|ms| ctx.input(|i| i.time) * 1000.0 < ms);
+        if espera {
+            ctx.request_repaint();
+            return;
         }
         let ocupado = self.trabajo.is_some() || self.trabajo_vista.is_some() || self.patron.is_none();
         if self.frames < 30 || ocupado {
             ctx.request_repaint();
             return;
         }
-        if self.frames < 1000 {
-            self.frames = 1000;
+        if !self.capturado {
+            // El contador de fotogramas no sirve de marca: un patrón lento pasa de mil.
+            self.capturado = true;
             // DEDALO_PDF=ruta: guarda también el PDF (prueba de punta a punta).
             if let Ok(p) = std::env::var("DEDALO_PDF") {
                 self.exportar(PathBuf::from(p), true, ctx);

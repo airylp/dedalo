@@ -418,3 +418,16 @@ mod tests {
         assert_eq!(a.v, b.v);
     }
 }
+
+#[cfg(test)]
+mod tiempo {
+    use super::*;
+    /// Cuánto tarda la reacción-difusión en una hoja carta (separación 4 mm).
+    #[test]
+    #[ignore]
+    fn tiempo_hoja_carta() {
+        let t = std::time::Instant::now();
+        let c = reaccion_difusion(186.0, 232.0, 4.0, 1, 700, &Control::default()).unwrap();
+        println!("{}×{} muestras, 700 pasos: {:?} (×10 = pasos completos)", c.w, c.h, t.elapsed());
+    }
+}

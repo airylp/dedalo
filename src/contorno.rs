@@ -92,8 +92,10 @@ impl Dibujo<'_> {
                 let luz = match trazo {
                     None => 1.0 - dentro,
                     Some(t) => {
-                        let media = (t.linea / mm / 2.0).max(0.35);
-                        let borde = (media + 0.5 - dist.abs()).clamp(0.0, 1.0);
+                        // Línea de `ancho` px: si es más fina que un píxel se dibuja
+                        // continua y más tenue (si no, sale a trazos).
+                        let ancho = t.linea / mm;
+                        let borde = (ancho / 2.0 + 0.5 - dist.abs()).clamp(0.0, ancho.min(1.0));
                         let fondo = match t.impresion {
                             Impresion::Guia => 1.0 - dentro * (1.0 - t.gris),
                             Impresion::Contorno => 1.0,

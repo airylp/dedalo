@@ -60,6 +60,9 @@ pub struct Parametros {
     /// Líneas de flujo: cuánto siguen los bordes de la imagen (0–1).
     #[serde(rename = "siguen_la_imagen", default = "seis_decimos")]
     pub sigue: f32,
+    /// Líneas de flujo: sin líneas en el fondo liso y claro.
+    #[serde(rename = "fondo_vacio", default)]
+    pub fondo_vacio: bool,
 }
 
 fn tres() -> u32 {
@@ -87,6 +90,7 @@ impl Default for Parametros {
             ajuste: Ajuste::default(),
             zonas: 3,
             sigue: 0.6,
+            fondo_vacio: false,
         }
     }
 }
