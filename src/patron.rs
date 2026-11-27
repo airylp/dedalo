@@ -118,8 +118,16 @@ const RD_F: f32 = 0.029;
 const RD_K: f32 = 0.057;
 const RD_DU: f32 = 1.0;
 const RD_DV: f32 = 0.5;
-/// Pasos de la simulación: a partir de aquí el dibujo casi no cambia.
+/// Pasos de la simulación como máximo (antes se daban siempre todos).
 pub const RD_PASOS: usize = 7000;
+/// Las rayas nunca se quedan quietas: tras formarse (≈ 2000–4000 pasos) siguen
+/// moviéndose despacio a ritmo fijo. Se para cuando el cambio medio de V en
+/// `RD_CADA` pasos baja de esto (≈ 4000–4500 pasos; medido con `traza_rd`).
+const RD_QUIETO: f32 = 0.0045;
+const RD_CADA: usize = 250;
+// (no antes de 2000 pasos: al principio las manchas crecen y el cambio puede ser bajo).
+/// Pasos que suele dar (para la barra de avance).
+const RD_PASOS_TIPICOS: usize = 4500;
 
 /// Rayas de reacción-difusión sobre un área de `ancho` × `alto` mm cuyo
 /// periodo (centro de un canal al centro del siguiente) es `periodo` mm.
@@ -148,13 +156,14 @@ pub fn reaccion_difusion(ancho: f32, alto: f32, periodo: f32, semilla: u64, paso
         }
     }
     let mut u2 = vec![0.0f32; n];
+    let mut v_antes = v.clone();
     let mut v2 = vec![0.0f32; n];
     for it in 0..pasos {
         if it % 50 == 0 {
             if ctl.cancelado() {
                 return None;
             }
-            ctl.avanza(it, pasos);
+            ctl.avanza(it.min(RD_PASOS_TIPICOS * 19 / 20), pasos.min(RD_PASOS_TIPICOS));
         }
         u2.par_chunks_mut(w).zip(v2.par_chunks_mut(w)).enumerate().for_each(|(j, (fu, fv))| {
             let jm = if j == 0 { 1 } else { j - 1 };
@@ -165,6 +174,13 @@ pub fn reaccion_difusion(ancho: f32, alto: f32, periodo: f32, semilla: u64, paso
         });
         std::mem::swap(&mut u, &mut u2);
         std::mem::swap(&mut v, &mut v2);
+        if (it + 1) % RD_CADA == 0 {
+            let cambio = v.iter().zip(&v_antes).map(|(a, b)| (a - b).abs()).sum::<f32>() / n as f32;
+            if cambio < RD_QUIETO && it + 1 >= 2000 {
+                break;
+            }
+            v_antes.copy_from_slice(&v);
+        }
     }
     ctl.avanza(1, 1);
     // V alto = raya: se invierte para que «bajo = muro».
@@ -444,7 +460,7 @@ mod tiempo {
     #[ignore]
     fn tiempo_hoja_carta() {
         let t = std::time::Instant::now();
-        let c = reaccion_difusion(186.0, 232.0, 4.0, 1, 700, &Control::default()).unwrap();
-        println!("{}×{} muestras, 700 pasos: {:?} (×10 = pasos completos)", c.w, c.h, t.elapsed());
+        let c = reaccion_difusion(186.0, 232.0, 4.0, 1, RD_PASOS, &Control::default()).unwrap();
+        println!("{}×{} muestras: {:?}", c.w, c.h, t.elapsed());
     }
 }
