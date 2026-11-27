@@ -58,6 +58,9 @@ pub mod indices {
     pub const PUENTE: &[usize] = &[168, 6, 197, 195, 5, 4, 1];
     /// Base de la nariz (aletas y columela).
     pub const BASE_NARIZ: &[usize] = &[98, 97, 2, 326, 327];
+    /// Lados de la nariz: del lagrimal por el borde del caballete hasta rodear la aleta.
+    pub const LADO_NARIZ_I: &[usize] = &[193, 245, 188, 174, 236, 198, 209, 129, 64, 98];
+    pub const LADO_NARIZ_D: &[usize] = &[417, 465, 412, 399, 456, 420, 429, 358, 294, 327];
 }
 
 impl Rostro {
@@ -182,6 +185,9 @@ pub struct Cara {
     pub ojos: [Ojo; 2],
     /// Curvas que guían las líneas (cejas, nariz, labios): las líneas corren paralelas a ellas.
     pub guias: Vec<Vec<(f32, f32)>>,
+    /// Líneas que se trazan tal cual, antes que las demás: el centro de cada ceja, los
+    /// párpados, la raya de la boca y la base de la nariz (así el rasgo queda dibujado).
+    pub trazos: Vec<Vec<(f32, f32)>>,
     /// Curvas de los rasgos (ojos, cejas, nariz, labios): cerca de ellas, más detalle.
     pub rasgos: Vec<Vec<(f32, f32)>>,
     /// Centro y semiejes del óvalo.
@@ -233,11 +239,23 @@ impl Cara {
             let p2 = (p1.0 + 0.4 * (p1.0 - p0.0), p1.1 + 0.4 * (p1.1 - p0.1));
             vec![p0, p1, p2]
         };
-        let mut guias = vec![ceja(CEJA_I), ceja(CEJA_D), curva(PUENTE), curva(BASE_NARIZ), cerrada(LABIOS), curva(BOCA)];
+        // Lados de la nariz (del lagrimal a la aleta) y el entrecejo (de la frente al puente):
+        // las líneas bajan por ahí en vez de cruzar y las cejas quedan separadas.
+        let (lado_i, lado_d) = (curva(LADO_NARIZ_I), curva(LADO_NARIZ_D));
+        let entrecejo: Vec<_> = [151, 9, 8].iter().chain(PUENTE).map(|&i| mm(i)).collect();
+        let mut guias = vec![ceja(CEJA_I), ceja(CEJA_D), entrecejo, curva(BASE_NARIZ), cerrada(LABIOS), curva(BOCA), lado_i.clone(), lado_d.clone()];
         guias.extend(parpados(OJO_I));
         guias.extend(parpados(OJO_D));
         guias.push(surco(98, 61, -1.0));
         guias.push(surco(327, 291, 1.0));
+        // Centro de la ceja: el borde de arriba va de fuera a dentro y el de abajo vuelve.
+        let centro_ceja = |idx: &[usize]| (0..5).map(|k| {
+            let (a, b) = (mm(idx[k]), mm(idx[9 - k]));
+            ((a.0 + b.0) / 2.0, (a.1 + b.1) / 2.0)
+        }).collect::<Vec<_>>();
+        let mut trazos = vec![centro_ceja(CEJA_I), centro_ceja(CEJA_D), curva(BOCA), curva(BASE_NARIZ), lado_i, lado_d];
+        trazos.extend(parpados(OJO_I));
+        trazos.extend(parpados(OJO_D));
         let mut rasgos = guias.clone();
         rasgos.push(cerrada(OJO_I));
         rasgos.push(cerrada(OJO_D));
@@ -245,6 +263,7 @@ impl Cara {
             ovalo,
             ojos: [ojo(OJO_I, (33, 133), (159, 145)), ojo(OJO_D, (362, 263), (386, 374))],
             guias,
+            trazos,
             rasgos,
             centro: ((x0 + x1) / 2.0, (y0 + y1) / 2.0),
             semi: ((x1 - x0) / 2.0, (y1 - y0) / 2.0),

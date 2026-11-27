@@ -242,7 +242,7 @@ pub fn flujo(ancho: f32, alto: f32, periodo: f32, semilla: u64, tono: Option<&To
     let k_detalle = if cara.is_some() { 0.7 } else { 1.0 };
     // Rostro: unas `LINEAS_CARA` líneas a lo ancho de la cara (y algo menos en el pelo), sea cual
     // sea la separación general: con 4 mm en una cara de 6 cm solo cabían 12 y los rasgos se perdían.
-    let lineas_cara: f32 = std::env::var("DEDALO_LINEAS_CARA").ok().and_then(|v| v.parse().ok()).unwrap_or(26.0);
+    let lineas_cara: f32 = std::env::var("DEDALO_LINEAS_CARA").ok().and_then(|v| v.parse().ok()).unwrap_or(34.0);
     let k_cara = cara.map_or(1.0, |c| (2.0 * c.semi.0 / lineas_cara / periodo).clamp(0.4, 1.0));
     let mut denso = Rejilla::new(ancho, alto, g, |x, y| match region.cercano(x, y) as u32 {
         1 => k_cara,
@@ -437,6 +437,41 @@ pub fn flujo(ancho: f32, alto: f32, periodo: f32, semilla: u64, tono: Option<&To
     let mut cola: VecDeque<(f32, f32)> = VecDeque::new();
     let mut siguiente_reserva = 0usize;
     let max_pasos = ((ancho + alto) * 4.0 / paso_l) as usize;
+    // Semillas a los lados de una línea, cada media separación a lo largo.
+    let semillas_al_lado = |linea: &[(f32, f32)], cola: &mut VecDeque<(f32, f32)>| {
+        let cada = ((0.5 * sep(linea[0].0, linea[0].1)) / paso_l).max(1.0) as usize;
+        for k in (0..linea.len()).step_by(cada) {
+            let (px, py) = linea[k];
+            let (a, b) = (linea[k.saturating_sub(1)], linea[(k + 1).min(linea.len() - 1)]);
+            let (tx, ty) = (b.0 - a.0, b.1 - a.1);
+            let l = (tx * tx + ty * ty).sqrt().max(1e-6);
+            let s = sep(px, py);
+            cola.push_back((px - ty / l * s, py + tx / l * s));
+            cola.push_back((px + ty / l * s, py - tx / l * s));
+        }
+    };
+    // Retrato: primero los rasgos (cejas, párpados, boca, nariz) tal cual, para que una línea
+    // pase justo por ellos; las demás se acomodan alrededor.
+    let k_trazos = std::env::var("DEDALO_TRAZOS").map_or(true, |v| v != "0");
+    for t in cara.filter(|_| k_trazos).map_or(&[][..], |c| &c.trazos[..]) {
+        let id = lineas.len() as u32;
+        let mut linea: Vec<(f32, f32)> = vec![];
+        for p in curva_suave(t, paso_l) {
+            if !dentro(p.0, p.1) || en_fondo(p.0, p.1) || espacio.ocupado(p.0, p.1, cabe, id, linea.len() as i32, i32::MAX) {
+                break;
+            }
+            linea.push(p);
+        }
+        if (linea.len() as f32) * paso_l < sep(t[0].0, t[0].1) {
+            continue;
+        }
+        for (k, &(x, y)) in linea.iter().enumerate() {
+            espacio.poner(Punto { x, y, linea: id, idx: k as i32 });
+        }
+        semillas_al_lado(&linea, &mut cola);
+        zona_de.push(zona_en(linea[linea.len() / 2].0, linea[linea.len() / 2].1));
+        lineas.push(linea);
+    }
     loop {
         if ctl.cancelar.load(Ordering::Relaxed) {
             return None;
@@ -494,17 +529,7 @@ pub fn flujo(ancho: f32, alto: f32, periodo: f32, semilla: u64, tono: Option<&To
         let mut linea: Vec<(f32, f32)> = atras.into_iter().rev().collect();
         linea.push((sx, sy));
         linea.extend(adelante);
-        // Semillas a los lados, cada media separación a lo largo.
-        let cada = ((0.5 * sep(sx, sy)) / paso_l).max(1.0) as usize;
-        for k in (0..linea.len()).step_by(cada) {
-            let (px, py) = linea[k];
-            let (a, b) = (linea[k.saturating_sub(1)], linea[(k + 1).min(linea.len() - 1)]);
-            let (tx, ty) = (b.0 - a.0, b.1 - a.1);
-            let l = (tx * tx + ty * ty).sqrt().max(1e-6);
-            let s = sep(px, py);
-            cola.push_back((px - ty / l * s, py + tx / l * s));
-            cola.push_back((px + ty / l * s, py - tx / l * s));
-        }
+        semillas_al_lado(&linea, &mut cola);
         suavizar_linea(&mut linea, 12);
         lineas.push(linea);
         zona_de.push(zona);
@@ -734,6 +759,27 @@ fn suave_paso(a: f32, b: f32, x: f32) -> f32 {
 }
 
 /// Media móvil [¼ ½ ¼] (`pasadas` veces) sin mover los extremos.
+/// Curva de Catmull-Rom por los puntos de `l`, muestreada cada `paso` (aprox.).
+fn curva_suave(l: &[(f32, f32)], paso: f32) -> Vec<(f32, f32)> {
+    let n = l.len();
+    if n < 2 {
+        return l.to_vec();
+    }
+    let p = |i: isize| l[i.clamp(0, n as isize - 1) as usize];
+    let mut o = vec![l[0]];
+    for i in 0..n as isize - 1 {
+        let (p0, p1, p2, p3) = (p(i - 1), p(i), p(i + 1), p(i + 2));
+        let m = ((p2.0 - p1.0).hypot(p2.1 - p1.1) / paso).ceil().max(1.0) as usize;
+        for k in 1..=m {
+            let t = k as f32 / m as f32;
+            let (t2, t3) = (t * t, t * t * t);
+            let f = |a: f32, b: f32, c: f32, d: f32| 0.5 * (2.0 * b + (c - a) * t + (2.0 * a - 5.0 * b + 4.0 * c - d) * t2 + (3.0 * b - a - 3.0 * c + d) * t3);
+            o.push((f(p0.0, p1.0, p2.0, p3.0), f(p0.1, p1.1, p2.1, p3.1)));
+        }
+    }
+    o
+}
+
 fn suavizar_linea(l: &mut [(f32, f32)], pasadas: usize) {
     if l.len() < 3 {
         return;
@@ -900,6 +946,24 @@ mod retratos {
             let r = d.raster(px, py, None);
             let dib = image::RgbaImage::from_raw(px as u32, py as u32, r).unwrap();
             let orig = image::imageops::resize(&image::open(&p).unwrap().to_rgba8(), px as u32, py as u32, image::imageops::FilterType::Triangle);
+            let mut orig = orig;
+            // DEDALO_GUIAS=1: las guías (azul) y los trazos (rojo) del rostro sobre el original.
+            if let (Some(c), true) = (&cara, std::env::var("DEDALO_GUIAS").is_ok()) {
+                let k = px as f32 / ancho;
+                for (ls, color) in [(&c.guias, [0, 90, 255, 255]), (&c.trazos, [255, 0, 0, 255])] {
+                    for l in ls.iter() {
+                        for w in l.windows(2) {
+                            for s in 0..=40 {
+                                let t = s as f32 / 40.0;
+                                let (x, y) = ((w[0].0 + (w[1].0 - w[0].0) * t) * k, (w[0].1 + (w[1].1 - w[0].1) * t) * k);
+                                if x >= 0.0 && y >= 0.0 && (x as u32) < px as u32 && (y as u32) < py as u32 {
+                                    orig.put_pixel(x as u32, y as u32, image::Rgba(color));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             let mut hoja = image::RgbaImage::from_pixel(px as u32 * 2 + 20, py as u32, image::Rgba([255, 255, 255, 255]));
             image::imageops::overlay(&mut hoja, &orig, 0, 0);
             image::imageops::overlay(&mut hoja, &dib, px as i64 + 20, 0);
