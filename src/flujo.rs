@@ -239,6 +239,24 @@ pub fn flujo(ancho: f32, alto: f32, periodo: f32, semilla: u64, tono: Option<&To
         None => Rejilla { w: 1, h: 1, paso: g, v: vec![0.0] },
     };
     let region_en = |x: f32, y: f32| region.cercano(x, y) as u32;
+    // En la cara, contraste local (tono − tono suavizado a ≈ 1,5 periodos): lo oscuro de cada rasgo
+    // engorda y la piel entre rasgos adelgaza, así ojos, cejas, nariz y boca quedan separados.
+    let k_contraste: f32 = std::env::var("DEDALO_CONTRASTE").ok().and_then(|v| v.parse().ok()).unwrap_or(1.2);
+    let contraste = cara.filter(|_| k_contraste > 0.0).map(|_| {
+        let mut en_cara = Rejilla::new(ancho, alto, g, |x, y| (region.cercano(x, y) as u32 == 1) as u8 as f32);
+        en_cara.suavizar(2);
+        let mut fondo_t = Rejilla { w: tonos.w, h: tonos.h, paso: g, v: tonos.v.clone() };
+        fondo_t.suavizar(3);
+        fondo_t.suavizar(3);
+        (en_cara, fondo_t)
+    });
+    let tinta = |x: f32, y: f32| -> f32 {
+        let t = tono_en(x, y);
+        match &contraste {
+            Some((c, f)) => (t + k_contraste * c.muestra(x, y) * (t - f.muestra(x, y))).clamp(0.0, 1.0),
+            None => t,
+        }
+    };
     let k_detalle = if cara.is_some() { 0.7 } else { 1.0 };
     // Rostro: unas `LINEAS_CARA` líneas a lo ancho de la cara (y algo menos en el pelo), sea cual
     // sea la separación general: con 4 mm en una cara de 6 cm solo cabían 12 y los rasgos se perdían.
@@ -252,7 +270,9 @@ pub fn flujo(ancho: f32, alto: f32, periodo: f32, semilla: u64, tono: Option<&To
     denso.suavizar(2);
     denso.suavizar(2);
     let (s_max, s_min) = (k_claro.max(k_oscuro) * periodo, k_claro.min(k_oscuro) * periodo * k_detalle * k_cara);
-    let sep = |x: f32, y: f32| (k_claro * periodo + (k_oscuro - k_claro) * periodo * tonos.muestra(x, y)) * (1.0 - (1.0 - k_detalle) * detalle.muestra(x, y) * (1.0 - tonos.muestra(x, y))) * denso.muestra(x, y);
+    // Junto a los rasgos lo oscuro no separa las líneas (si no, un ojo oscuro se queda con dos líneas).
+    let k_rasgo: f32 = std::env::var("DEDALO_RASGO").ok().and_then(|v| v.parse().ok()).unwrap_or(0.8);
+    let sep = |x: f32, y: f32| (k_claro * periodo + (k_oscuro - k_claro) * periodo * tonos.muestra(x, y) * (1.0 - k_rasgo * detalle.muestra(x, y))) * (1.0 - (1.0 - k_detalle) * detalle.muestra(x, y) * (1.0 - tonos.muestra(x, y))) * denso.muestra(x, y);
     // (solo en lo claro: en lo oscuro, juntar las líneas deja sin sitio la tinta por el canal mínimo).
 
     // Zonas: bandas de tono muy suavizado (y, en un retrato, cara / pelo / resto).
@@ -625,7 +645,7 @@ pub fn flujo(ancho: f32, alto: f32, periodo: f32, semilla: u64, tono: Option<&To
                     let hueco = d1 + d2;
                     // Tono fino (no la rejilla gruesa): el grosor cambia a lo largo de la
                     // línea con el detalle de la imagen, como en el grabado.
-                    let t = tono_en(x, y);
+                    let t = tinta(x, y);
                     let medio = (t * hueco / 2.0).max(op.muro_min / 2.0);
                     let tope = ((hueco - op.canal_min) / 2.0).max(op.muro_min / 2.0).min(op.grosor_max / 2.0);
                     bloque[fj * cw + i] = d1 - medio.min(tope);

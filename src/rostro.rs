@@ -59,8 +59,8 @@ pub mod indices {
     /// Base de la nariz (aletas y columela).
     pub const BASE_NARIZ: &[usize] = &[98, 97, 2, 326, 327];
     /// Lados de la nariz: del lagrimal por el borde del caballete hasta rodear la aleta.
-    pub const LADO_NARIZ_I: &[usize] = &[193, 245, 188, 174, 236, 198, 209, 129, 64, 98];
-    pub const LADO_NARIZ_D: &[usize] = &[417, 465, 412, 399, 456, 420, 429, 358, 294, 327];
+    pub const LADO_NARIZ_I: &[usize] = &[188, 174, 236, 198, 209, 129, 64, 98];
+    pub const LADO_NARIZ_D: &[usize] = &[412, 399, 456, 420, 429, 358, 294, 327];
 }
 
 impl Rostro {
@@ -256,12 +256,20 @@ impl Cara {
         let mut trazos = vec![centro_ceja(CEJA_I), centro_ceja(CEJA_D), curva(BOCA), curva(BASE_NARIZ), lado_i, lado_d];
         trazos.extend(parpados(OJO_I));
         trazos.extend(parpados(OJO_D));
+        let ojos = [ojo(OJO_I, (33, 133), (159, 145)), ojo(OJO_D, (362, 263), (386, 374))];
+        // Iris: una raya corta por el centro del ojo, a lo largo; el tono oscuro la vuelve un punto grueso.
+        if std::env::var("DEDALO_PUPILA").map_or(true, |v| v != "0") {
+            for o in &ojos {
+                let (s, c) = o.ang.sin_cos();
+                trazos.push(vec![(o.c.0 - o.a * c, o.c.1 - o.a * s), (o.c.0 + o.a * c, o.c.1 + o.a * s)]);
+            }
+        }
         let mut rasgos = guias.clone();
         rasgos.push(cerrada(OJO_I));
         rasgos.push(cerrada(OJO_D));
         Cara {
             ovalo,
-            ojos: [ojo(OJO_I, (33, 133), (159, 145)), ojo(OJO_D, (362, 263), (386, 374))],
+            ojos,
             guias,
             trazos,
             rasgos,
